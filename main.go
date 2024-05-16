@@ -108,6 +108,16 @@ func getIPv6Prefix(ipnet *net.IPNet) string {
         ipv6Prefix += padding[len(ipv6Prefix):]          // Add padding to reach /64 length
     }
 
+    // Ensure it ends with a single colon
+    if !strings.HasSuffix(ipv6Prefix, ":") {
+        ipv6Prefix += ":"
+    }
+
+    // Remove one colon until the character before the last is not a colon
+    for strings.HasSuffix(ipv6Prefix, "::") {
+        ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
+    }
+
     return ipv6Prefix
 }
 
