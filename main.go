@@ -93,15 +93,25 @@ func getCurrentIPv6Prefix() (string, error) {
     return ipv6Prefix, nil
 }
 
-// Function to extract the IPv6 prefix from an IPNet object
+// Function to extract the IPv6 prefix from an IPNet object and pad it to /64 length
 func getIPv6Prefix(ipnet *net.IPNet) string {
-    // Get the network prefix length
-    prefixLen, _ := ipnet.Mask.Size()
-    // Extract the network portion of the IP and return it as a string
-    return ipnet.IP.Mask(ipnet.Mask).String() + "/" + fmt.Sprint(prefixLen)
+    // Get the network portion of the IP
+    network := ipnet.IP.Mask(ipnet.Mask)
+
+    // Convert the network portion to a string representation
+    ipv6Prefix := network.String()
+
+    // If the prefix length is less than 64, pad it with zeros
+    if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") {
+        ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
+        padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
+        ipv6Prefix += padding[len(ipv6Prefix):]          // Add padding to reach /64 length
+    }
+
+    return ipv6Prefix
 }
 
-// Function to load files from zones.master directory, replace '#@ipv6_prefix@#' with the obtained prefix,
+// Function to load files from zones.master directory, replace '#@ipv6_prefix@#::@' with the obtained prefix,
 // and save them to the zones directory
 func loadAndSaveZoneFiles(ipv6Prefix string) error {
     // // Open the zones.master directory
@@ -137,8 +147,8 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
             return err
         }
 
-        // Replace '#@ipv6_prefix@#' with the obtained prefix
-        replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#", ipv6Prefix)
+        // Replace '#@ipv6_prefix@#::@' with the obtained prefix
+        replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
 
         // Save the modified content to the zones directory with the same filename
         outputFile := filepath.Join(zonesDir, file.Name())
