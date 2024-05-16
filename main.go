@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
@@ -21,7 +20,7 @@ const (
 )
 
 func main() {
-    var lastIPv6Prefix string
+    var lastIPv6Prefix string = ""
 
     // Start an infinite loop
     for {
@@ -34,6 +33,8 @@ func main() {
 
         // If the current prefix is different from the last one, update the zone files and reload services
         if currentIPv6Prefix != lastIPv6Prefix {
+			fmt.Printf("prefix: %v\n", currentIPv6Prefix)
+
             err := loadAndSaveZoneFiles(currentIPv6Prefix)
             if err != nil {
                 fmt.Println("Error:", err)
@@ -131,7 +132,7 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
         // Read the contents of the file
         filePath := filepath.Join(zonesMasterDir, file.Name())
-        content, err := ioutil.ReadFile(filePath)
+        content, err := os.ReadFile(filePath)
         if err != nil {
             return err
         }
@@ -141,7 +142,7 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
         // Save the modified content to the zones directory with the same filename
         outputFile := filepath.Join(zonesDir, file.Name())
-        err = ioutil.WriteFile(outputFile, []byte(replacedContent), 0644)
+        err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
         if err != nil {
             return err
         }
