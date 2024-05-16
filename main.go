@@ -2,34 +2,74 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
     zonesMasterDir = "/etc/bind/zones.master/"
     zonesDir       = "/etc/bind/zones/"
+    configFile     = "/etc/bind/.ipv6_prefix"
+	interfaceName = "ens33"
+    checkInterval  = 50 * time.Second
 )
 
 func main() {
+    var lastIPv6Prefix string
+
+    // Start an infinite loop
+    for {
+        // Get the current IPv6 prefix
+        currentIPv6Prefix, err := getCurrentIPv6Prefix()
+        if err != nil {
+            fmt.Println("Error:", err)
+            return
+        }
+
+        // If the current prefix is different from the last one, update the zone files and reload services
+        if currentIPv6Prefix != lastIPv6Prefix {
+            err := loadAndSaveZoneFiles(currentIPv6Prefix)
+            if err != nil {
+                fmt.Println("Error:", err)
+                return
+            }
+
+            err = reloadServices()
+            if err != nil {
+                fmt.Println("Error:", err)
+                return
+            }
+
+            lastIPv6Prefix = currentIPv6Prefix
+            fmt.Println("Zone files updated successfully.")
+        }
+
+        // Sleep for the specified interval before checking again
+        time.Sleep(checkInterval)
+    }
+}
+
+// Function to get the current IPv6 prefix
+func getCurrentIPv6Prefix() (string, error) {
     // Specify the network interface name
-    interfaceName := "eth0" // Change this to your desired interface name
+    // interfaceName := "eth0" // Change this to your desired interface name
 
     // Get network interface
     iface, err := net.InterfaceByName(interfaceName)
     if err != nil {
-        fmt.Println("Error:", err)
-        return
+        return "", err
     }
 
     // Get addresses for the interface
     addrs, err := iface.Addrs()
     if err != nil {
-        fmt.Println("Error:", err)
-        return
+        return "", err
     }
 
     // Initialize variables to store the IPv6 prefix
@@ -44,21 +84,12 @@ func main() {
         }
     }
 
-    // If no IPv6 prefix found, exit
+    // If no IPv6 prefix found, return an error
     if ipv6Prefix == "" {
-        fmt.Println("Error: No IPv6 prefix found")
-        return
+        return "", fmt.Errorf("no IPv6 prefix found")
     }
 
-    // Load files from zones.master directory, replace '#@ipv6_prefix@#' with the obtained prefix,
-    // and save them to the zones directory
-    err = loadAndSaveZoneFiles(ipv6Prefix)
-    if err != nil {
-        fmt.Println("Error:", err)
-        return
-    }
-
-    fmt.Println("Zone files updated successfully!")
+    return ipv6Prefix, nil
 }
 
 // Function to extract the IPv6 prefix from an IPNet object
@@ -72,11 +103,24 @@ func getIPv6Prefix(ipnet *net.IPNet) string {
 // Function to load files from zones.master directory, replace '#@ipv6_prefix@#' with the obtained prefix,
 // and save them to the zones directory
 func loadAndSaveZoneFiles(ipv6Prefix string) error {
-    // Open the zones.master directory
-    files, err := ioutil.ReadDir(zonesMasterDir)
+    // // Open the zones.master directory
+    // files, err := ioutil.ReadDir(zonesMasterDir)
+    // if err != nil {
+    //     return err
+    // }
+
+	entries, err := os.ReadDir(zonesMasterDir)
     if err != nil {
         return err
     }
+	files := make([]fs.FileInfo, 0, len(entries))
+	for _, entry := range entries {
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		files = append(files, info)
+	}
 
     // Iterate over files in the zones.master directory
     for _, file := range files {
@@ -87,7 +131,7 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
         // Read the contents of the file
         filePath := filepath.Join(zonesMasterDir, file.Name())
-        content, err := os.ReadFile(filePath)
+        content, err := ioutil.ReadFile(filePath)
         if err != nil {
             return err
         }
@@ -97,10 +141,27 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
         // Save the modified content to the zones directory with the same filename
         outputFile := filepath.Join(zonesDir, file.Name())
-        err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
+        err = ioutil.WriteFile(outputFile, []byte(replacedContent), 0644)
         if err != nil {
             return err
         }
+    }
+
+    return nil
+}
+
+// Function to reload bind9.service and named.service
+func reloadServices() error {
+    // Reload bind9.service
+    err := exec.Command("systemctl", "reload", "bind9.service").Run()
+    if err != nil {
+        return err
+    }
+
+    // Reload named.service
+    err = exec.Command("systemctl", "reload", "named.service").Run()
+    if err != nil {
+        return err
     }
 
     return nil
