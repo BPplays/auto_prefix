@@ -3,10 +3,12 @@ package main
 import (
 	"fmt"
 	"io/fs"
+	"math/rand"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -19,11 +21,29 @@ const (
     checkInterval  = 50 * time.Second
 )
 
+var ut string = ""
+
 func main() {
     var lastIPv6Prefix string = ""
 
+	// date8 := get_date8()
+
+
+
     // Start an infinite loop
     for {
+
+		// if date8 != get_date8() {
+		// 	date8 = get_date8()
+		// 	// date_loop = 0
+
+		// }
+
+		if ut != get_ut() {
+			ut = get_ut()
+		}
+
+
         // Get the current IPv6 prefix
         currentIPv6Prefix, err := getCurrentIPv6Prefix()
         if err != nil {
@@ -41,7 +61,7 @@ func main() {
                 return
             }
 
-            err = reloadServices()
+            err = restart_dns()
             if err != nil {
                 fmt.Println("Error:", err)
                 return
@@ -54,6 +74,41 @@ func main() {
         // Sleep for the specified interval before checking again
         time.Sleep(checkInterval)
     }
+}
+
+func get_date8() (string) {
+	// Get the current date
+	currentDate := time.Now()
+
+	// Format the date as YYYYMMDD
+	formattedDate := currentDate.Format("20060102")
+
+	// Trim or pad the date to 8 characters
+	if len(formattedDate) > 8 {
+		formattedDate = formattedDate[:8]
+	} else {
+		formattedDate = fmt.Sprintf("%-8s", formattedDate)
+	}
+
+	return formattedDate
+}
+
+
+func get_ut() (string) {
+	// Get the current date
+	currentDate := time.Now()
+
+	// Format the date as YYYYMMDD
+	ut := string(currentDate.Unix())
+
+	// Trim or pad the date to 8 characters
+	if len(ut) > 10 {
+		ut = ut[:10]
+	} else {
+		ut = fmt.Sprintf("%-10s", ut)
+	}
+
+	return ut
 }
 
 // Function to get the current IPv6 prefix
@@ -159,6 +214,7 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
         // Replace '#@ipv6_prefix@#::@' with the obtained prefix
         replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
+		replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
 
         // Save the modified content to the zones directory with the same filename
         outputFile := filepath.Join(zonesDir, file.Name())
@@ -171,16 +227,65 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
     return nil
 }
 
+// // Function to reload bind9.service and named.service
+// func reloadServices() error {
+//     // Reload bind9.service
+//     err := exec.Command("systemctl", "reload", "bind9.service").Run()
+//     if err != nil {
+//         return err
+//     }
+
+//     // Reload named.service
+//     err = exec.Command("systemctl", "reload", "named.service").Run()
+//     if err != nil {
+//         return err
+//     }
+
+//     return nil
+// }
+
 // Function to reload bind9.service and named.service
-func reloadServices() error {
+func restart_dns() error {
+	dev_name := ""
+	wait_time := 0.0
+	wait_time_mul := 5.0
+	wait_time_def := rand.Float64() * 15
+
+    hostname, err := os.Hostname()
+    if err != nil {
+        fmt.Println("cant get hostname. Error:", err)
+        wait_time = wait_time_def
+    } else {
+		spl := strings.Split(hostname, ".")
+		dev_name = spl[0]
+
+		numericStr := ""
+		for _, char := range dev_name {
+			if (char >= '0' && char <= '9') || char == '.' {
+				numericStr += string(char)
+			}
+		}
+	
+		// Convert string to float64
+		num, err := strconv.ParseFloat(numericStr, 64)
+		if err != nil {
+			fmt.Println("Error converting string to float64:", err)
+			wait_time = wait_time_def
+		} else {
+			wait_time = (num-1) * wait_time_mul
+		}
+	}
+
+	time.Sleep(time.Duration(wait_time * float64(time.Second)))
+
     // Reload bind9.service
-    err := exec.Command("systemctl", "reload", "bind9.service").Run()
+    err = exec.Command("systemctl", "restart", "bind9.service").Run()
     if err != nil {
         return err
     }
 
     // Reload named.service
-    err = exec.Command("systemctl", "reload", "named.service").Run()
+    err = exec.Command("systemctl", "restart", "named.service").Run()
     if err != nil {
         return err
     }
