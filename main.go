@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"math/rand"
@@ -12,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/seancfoley/ipaddress-go/ipaddr"
 )
 
 const (
@@ -271,7 +272,7 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 
 func IPv6PrefixToReverseDNS(prefix string) string {
-	exp := FullIPv6(net.ParseIP(prefix))
+	exp := ipaddr.NewIPAddressString(prefix).GetAddress().ToFullString()
 
 	// Split the prefix into its components
 	runes := []rune(strings.ReplaceAll(exp, ":", ""))
@@ -289,18 +290,7 @@ func IPv6PrefixToReverseDNS(prefix string) string {
 
 
 
-func FullIPv6(ip net.IP) string {
-    dst := make([]byte, hex.EncodedLen(len(ip)))
-    _ = hex.Encode(dst, ip)
-    return string(dst[0:4]) + ":" +
-        string(dst[4:8]) + ":" +
-        string(dst[8:12]) + ":" +
-        string(dst[12:16]) + ":" +
-        string(dst[16:20]) + ":" +
-        string(dst[20:24]) + ":" +
-        string(dst[24:28]) + ":" +
-        string(dst[28:])
-}
+
 
 
 
