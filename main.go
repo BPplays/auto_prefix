@@ -270,38 +270,39 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 
 func IPv6PrefixToReverseDNS(prefix string) string {
-    // Split the prefix into its components
-    parts := strings.Split(prefix, ":")
+	// Split the prefix into its components
+	parts := strings.Split(prefix, ":")
 
-    // Reverse the order of parts
-    for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
-        parts[i], parts[j] = parts[j], parts[i]
-    }
+	// Reverse the order of parts
+	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+		parts[i], parts[j] = parts[j], parts[i]
+	}
 
-    // Replace empty parts with "0"
-    for i, part := range parts {
-        if part == "" {
-            parts[i] = "0"
-        }
-    }
+	// Replace empty parts with "0"
+	for i, part := range parts {
+		if part == "" {
+			parts[i] = "0"
+		}
+	}
 
-    // Convert each component to hexadecimal format
-    for i, part := range parts {
-        hexPart := fmt.Sprintf("%04x", convertHex(part))
-        parts[i] = hexPart
-    }
+	// Convert each component to hexadecimal format
+	for i, part := range parts {
+		parts[i] = reverseHex(part)
+	}
 
-    // Join the parts and construct the reverse DNS format
-    reverseDNS := strings.Join(parts, ".")
-    return reverseDNS + ".ip6.arpa"
+	// Join the parts and construct the reverse DNS format
+	reverseDNS := strings.Join(parts, ".")
+	return reverseDNS + ".ip6.arpa"
 }
 
-// Function to convert hexadecimal string to integer
-func convertHex(hexStr string) int {
-    num, _ := fmt.Sscanf(hexStr, "%x", new(int))
-    return num
+// Function to reverse a hexadecimal string
+func reverseHex(hexStr string) string {
+	reversed := ""
+	for i := len(hexStr) - 1; i >= 0; i-- {
+		reversed += string(hexStr[i])
+	}
+	return reversed
 }
-
 
 
 
