@@ -16,6 +16,8 @@ import (
 const (
     zonesMasterDir = "/etc/bind/zones.master/"
     zonesDir       = "/etc/bind/zones/"
+	named_master = "/etc/bind/named.conf.master"
+	named = "/etc/bind/named.conf"
     configFile     = "/etc/bind/.ipv6_prefix"
 	interfaceName = "ens33"
     checkInterval  = 50 * time.Second
@@ -23,26 +25,39 @@ const (
 
 var ut string = ""
 
+func loadAndSaveNamedConf(ipv6Prefix string) error {
+    reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix)
+    fmt.Printf("setting reverse dns to: %v", reverseDNS)
+
+
+ 
+	content, err := os.ReadFile(named_master)
+	if err != nil {
+		return err
+	}
+
+	replacedContent := strings.ReplaceAll(string(content), "@::#@ipv6_revdns_prefix@#", reverseDNS)
+
+	err = os.WriteFile(named, []byte(replacedContent), 0644)
+	if err != nil {
+		return err
+	}
+
+    return nil
+}
+
+
+
 func main() {
     var lastIPv6Prefix string = ""
-
-	// date8 := get_date8()
 
 
 
     // Start an infinite loop
     for {
-
-		// if date8 != get_date8() {
-		// 	date8 = get_date8()
-		// 	// date_loop = 0
-
-		// }
-
 		if ut != get_ut() {
 			ut = get_ut()
 		}
-
 
         // Get the current IPv6 prefix
         currentIPv6Prefix, err := getCurrentIPv6Prefix()
@@ -56,6 +71,11 @@ func main() {
 			fmt.Printf("prefix: %v\n", currentIPv6Prefix)
 
             err := loadAndSaveZoneFiles(currentIPv6Prefix)
+            if err != nil {
+                fmt.Println("Error:", err)
+                return
+            }
+            err = loadAndSaveNamedConf(currentIPv6Prefix)
             if err != nil {
                 fmt.Println("Error:", err)
                 return
@@ -215,6 +235,7 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
         // Replace '#@ipv6_prefix@#::@' with the obtained prefix
         replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
 		replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
+		replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", IPv6PrefixToReverseDNS(ipv6Prefix))
 
         // Save the modified content to the zones directory with the same filename
         outputFile := filepath.Join(zonesDir, file.Name())
@@ -243,6 +264,52 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 //     return nil
 // }
+
+
+
+
+
+func IPv6PrefixToReverseDNS(prefix string) string {
+    // Split the prefix into its components
+    parts := strings.Split(prefix, ":")
+
+    // Reverse the order of parts
+    for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
+        parts[i], parts[j] = parts[j], parts[i]
+    }
+
+    // Replace empty parts with "0"
+    for i, part := range parts {
+        if part == "" {
+            parts[i] = "0"
+        }
+    }
+
+    // Convert each component to hexadecimal format
+    for i, part := range parts {
+        hexPart := fmt.Sprintf("%04x", convertHex(part))
+        parts[i] = hexPart
+    }
+
+    // Join the parts and construct the reverse DNS format
+    reverseDNS := strings.Join(parts, ".")
+    return reverseDNS + ".ip6.arpa"
+}
+
+// Function to convert hexadecimal string to integer
+func convertHex(hexStr string) int {
+    num, _ := fmt.Sscanf(hexStr, "%x", new(int))
+    return num
+}
+
+
+
+
+
+
+
+
+
 
 // Function to reload bind9.service and named.service
 func restart_dns() error {
