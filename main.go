@@ -276,7 +276,8 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 func IPv6PrefixToReverseDNS(prefix string) string {
 	exp := ipaddr.NewIPAddressString(prefix+":").GetAddress()
 	exp = exp.AdjustPrefixLen(ipaddr.BitCount(prefix_len))
-	revdns, err := exp.ToReverseDNSString()
+	fmt.Println(exp.GetSection())
+	revdns, err := exp.GetSection().ToReverseDNSString()
 	if err != nil {
 		log.Fatalln(err)
 	}
