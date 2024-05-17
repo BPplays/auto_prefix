@@ -1,10 +1,9 @@
 package main
 
 import (
-	"errors"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
-	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -272,10 +271,8 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 
 func IPv6PrefixToReverseDNS(prefix string) string {
-	exp, err := expandIPv6Addr(prefix)
-	if err != nil {
-		log.Fatalln("error:", err)
-	}
+	exp := FullIPv6(net.ParseIP(prefix))
+
 	// Split the prefix into its components
 	runes := []rune(strings.ReplaceAll(exp, ":", ""))
 
@@ -292,30 +289,17 @@ func IPv6PrefixToReverseDNS(prefix string) string {
 
 
 
-func expandIPv6Addr(s string) (string, error) {
-    addr := net.ParseIP(s).To16()
-    if addr == nil {
-        return "", ErrInvalidAddress
-    }
-
-    var hex [16 * 3]byte
-    for i := 0; i < len(addr); i++ {
-        if i > 0 {
-            hex[3*i-1] = ':'
-        }
-        hex[3*i] = nibbleToChar(addr[i] >> 4)
-        hex[3*i+1] = nibbleToChar(addr[i])
-    }
-
-    return string(hex[:]), nil
-}
-var ErrInvalidAddress = errors.New("invalid address")
-func nibbleToChar(b byte) byte {
-    b &= 0x0f
-    if b > 9 {
-        return ('a' - 10) + b
-    }
-    return '0' + b
+func FullIPv6(ip net.IP) string {
+    dst := make([]byte, hex.EncodedLen(len(ip)))
+    _ = hex.Encode(dst, ip)
+    return string(dst[0:4]) + ":" +
+        string(dst[4:8]) + ":" +
+        string(dst[8:12]) + ":" +
+        string(dst[12:16]) + ":" +
+        string(dst[16:20]) + ":" +
+        string(dst[20:24]) + ":" +
+        string(dst[24:28]) + ":" +
+        string(dst[28:])
 }
 
 
