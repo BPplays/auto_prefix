@@ -273,6 +273,7 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 func IPv6PrefixToReverseDNS(prefix string) string {
 	exp := ipaddr.NewIPAddressString(prefix).GetAddress().ToFullString()
+	fmt.Println("full ip: ", exp)
 
 	// Split the prefix into its components
 	runes := []rune(strings.ReplaceAll(exp, ":", ""))
