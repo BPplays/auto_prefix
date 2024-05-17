@@ -274,28 +274,25 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 
 func IPv6PrefixToReverseDNS(prefix string) string {
-	exp := ipaddr.NewIPAddressString(prefix+":").GetAddress()
-	exp = exp.AdjustPrefixLen(ipaddr.BitCount(prefix_len))
+	prefixLen := prefix_len
+
+	exp := ipaddr.NewIPAddressString(prefix + ":").GetAddress()
+	exp = exp.AdjustPrefixLen(ipaddr.BitCount(prefixLen))
+	// Get the binary representation of the prefix
 	b := exp.ToSegmentedBinaryString()
-	fmt.Println(b)
+	fmt.Println("Binary representation:", b)
+
+	// Get the reverse DNS string
 	revdns, err := exp.GetSection().ToReverseDNSString()
 	if err != nil {
 		log.Fatalln(err)
 	}
-	
-	// // fmt.Println("full ip: ", exp)
 
-	// // Split the prefix into its components
-	// runes := []rune(strings.ReplaceAll(exp, ":", ""))
+	// Extract only the prefix part from the reverse DNS
+	parts := strings.Split(revdns, ".")
+	prefixPart := strings.Join(parts[1:], ".")
 
-    // var reversed string
-    // for i := len(runes) - 1; i >= 0; i-- {
-    //     reversed += string(runes[i]) + "."
-    // }
-    // // Remove the trailing period
-    // reversed = strings.TrimSuffix(reversed, ".")
-
-	return revdns
+	return prefixPart
 }
 
 
