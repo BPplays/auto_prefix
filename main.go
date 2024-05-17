@@ -30,7 +30,7 @@ const (
 var ut string = ""
 
 func loadAndSaveNamedConf(ipv6Prefix string) error {
-    reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix)
+    reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, prefix_len)
     fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
 
 
@@ -239,7 +239,7 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
         // Replace '#@ipv6_prefix@#::@' with the obtained prefix
         replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
 		replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
-		replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", IPv6PrefixToReverseDNS(ipv6Prefix))
+		replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", IPv6PrefixToReverseDNS(ipv6Prefix, prefix_len))
 
         // Save the modified content to the zones directory with the same filename
         outputFile := filepath.Join(zonesDir, file.Name())
