@@ -273,23 +273,30 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 
 
-func IPv6PrefixToReverseDNS(prefix string, pref_len int) string {
-    exp := ipaddr.NewIPAddressString(prefix + ":").GetAddress()
-    exp = exp.AdjustPrefixLen(ipaddr.BitCount(pref_len))
-    // Get the binary representation of the prefix
-    fmt.Printf("pref_len: %v\n", pref_len)
+func IPv6PrefixToReverseDNS(prefix string, prefLen int) string {
+	exp := ipaddr.NewIPAddressString(prefix + ":").GetAddress()
+	exp = exp.AdjustPrefixLen(ipaddr.BitCount(uint32(prefLen)))
 
-    // Get the reverse DNS string
-    revdns, err := exp.GetSection().ToReverseDNSString()
-    if err != nil {
-        log.Fatalln(err)
-    }
+	// Get the reverse DNS string
+	revdns, err := exp.GetSection().ToReverseDNSString()
+	if err != nil {
+		log.Fatalln(err)
+	}
 
-    // Extract only the prefix part from the reverse DNS
-    parts := strings.Split(revdns, ".")
-    prefixPart := strings.Join(parts[1:], ".")
+	// Calculate the number of parts to include in the prefix
+	// Each part in the reverse DNS string corresponds to a nibble (4 bits)
+	numParts := prefLen / 4
 
-    return prefixPart
+	// Split the reverse DNS string by dots
+	parts := strings.Split(revdns, ".")
+
+	// Include only the necessary parts up to the prefix length
+	prefixParts := parts[:numParts]
+
+	// Join the prefix parts back into a reverse DNS string
+	prefixPart := strings.Join(prefixParts, ".")
+
+	return prefixPart
 }
 
 
