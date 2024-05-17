@@ -99,7 +99,7 @@ func get_ut() (string) {
 	currentDate := time.Now()
 
 	// Format the date as YYYYMMDD
-	ut := string(currentDate.Unix())
+	ut := fmt.Sprint(currentDate.Unix())
 
 	// Trim or pad the date to 8 characters
 	if len(ut) > 10 {
