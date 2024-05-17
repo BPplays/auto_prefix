@@ -279,7 +279,7 @@ func IPv6PrefixToReverseDNS(prefix string, pref_len int) string {
 	exp = exp.AdjustPrefixLen(ipaddr.BitCount(pref_len))
 	// Get the binary representation of the prefix
 	b := exp.ToSegmentedBinaryString()
-	fmt.Println("Binary representation:", b)
+	fmt.Println("pref_len: %v\n", pref_len)
 
 	// Get the reverse DNS string
 	revdns, err := exp.GetSection().ToReverseDNSString()
