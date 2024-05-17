@@ -291,7 +291,7 @@ func IPv6PrefixToReverseDNS(prefix string, prefLen int) string {
 
 	// Include only the necessary parts up to the prefix length
 	// Reverse DNS entries are reversed, so take from the start
-	prefixParts := parts[:numNibbles]
+	prefixParts := parts[numNibbles:]
 
 	// Join the prefix parts back into a reverse DNS string
 	prefixPart := strings.Join(prefixParts, ".")
