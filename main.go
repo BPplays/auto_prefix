@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -270,42 +272,51 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 
 func IPv6PrefixToReverseDNS(prefix string) string {
+	exp, err := expandIPv6Addr(prefix)
+	if err != nil {
+		log.Fatalln("error:", err)
+	}
 	// Split the prefix into its components
-	parts := strings.Split(prefix, ":")
+	runes := []rune(strings.ReplaceAll(exp, ":", ""))
 
-	// Reverse the order of parts
-	for i, j := 0, len(parts)-1; i < j; i, j = i+1, j-1 {
-		parts[i], parts[j] = parts[j], parts[i]
-	}
+    var reversed string
+    for i := len(runes) - 1; i >= 0; i-- {
+        reversed += string(runes[i]) + "."
+    }
+    // Remove the trailing period
+    reversed = strings.TrimSuffix(reversed, ".")
 
-	// Replace empty parts with "0"
-	for i, part := range parts {
-		if part == "" {
-			parts[i] = "0"
-		}
-	}
-
-	// Convert each component to hexadecimal format
-	for i, part := range parts {
-		parts[i] = reverseHex(part)
-	}
-
-	// Join the parts and construct the reverse DNS format
-	reverseDNS := strings.Join(parts, ".")
-	return reverseDNS + ".ip6.arpa"
-}
-
-// Function to reverse a hexadecimal string
-func reverseHex(hexStr string) string {
-	reversed := ""
-	for i := len(hexStr) - 1; i >= 0; i-- {
-		reversed += string(hexStr[i])
-	}
-	return reversed
+	return reversed + ".ip6.arpa"
 }
 
 
 
+
+func expandIPv6Addr(s string) (string, error) {
+    addr := net.ParseIP(s).To16()
+    if addr == nil {
+        return "", ErrInvalidAddress
+    }
+
+    var hex [16 * 3]byte
+    for i := 0; i < len(addr); i++ {
+        if i > 0 {
+            hex[3*i-1] = ':'
+        }
+        hex[3*i] = nibbleToChar(addr[i] >> 4)
+        hex[3*i+1] = nibbleToChar(addr[i])
+    }
+
+    return string(hex[:]), nil
+}
+var ErrInvalidAddress = errors.New("invalid address")
+func nibbleToChar(b byte) byte {
+    b &= 0x0f
+    if b > 9 {
+        return ('a' - 10) + b
+    }
+    return '0' + b
+}
 
 
 
