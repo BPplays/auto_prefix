@@ -283,15 +283,15 @@ func IPv6PrefixToReverseDNS(prefix string, prefLen int) string {
 		log.Fatalln(err)
 	}
 
-	// Calculate the number of parts to include in the prefix
-	// Each part in the reverse DNS string corresponds to a nibble (4 bits)
-	numParts := prefLen / 4
+	// Calculate the number of nibbles to include in the prefix
+	numNibbles := prefLen / 4
 
 	// Split the reverse DNS string by dots
 	parts := strings.Split(revdns, ".")
 
 	// Include only the necessary parts up to the prefix length
-	prefixParts := parts[:numParts]
+	// Reverse DNS entries are reversed, so take from the start
+	prefixParts := parts[:numNibbles]
 
 	// Join the prefix parts back into a reverse DNS string
 	prefixPart := strings.Join(prefixParts, ".")
