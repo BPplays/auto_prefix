@@ -31,7 +31,7 @@ var ut string = ""
 
 func loadAndSaveNamedConf(ipv6Prefix string) error {
     reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix)
-    fmt.Printf("setting reverse dns to: %v", reverseDNS)
+    fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
 
 
  
@@ -273,11 +273,10 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 
 
-func IPv6PrefixToReverseDNS(prefix string) string {
-	prefixLen := prefix_len
+func IPv6PrefixToReverseDNS(prefix string, pref_len int) string {
 
 	exp := ipaddr.NewIPAddressString(prefix + ":").GetAddress()
-	exp = exp.AdjustPrefixLen(ipaddr.BitCount(prefixLen))
+	exp = exp.AdjustPrefixLen(ipaddr.BitCount(pref_len))
 	// Get the binary representation of the prefix
 	b := exp.ToSegmentedBinaryString()
 	fmt.Println("Binary representation:", b)
