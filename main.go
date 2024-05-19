@@ -343,11 +343,11 @@ func restart_dns() error {
 
 	time.Sleep(time.Duration(wait_time * float64(time.Second)))
 
-    // Reload bind9.service
-    err = exec.Command("systemctl", "restart", "bind9.service").Run()
-    if err != nil {
-        return err
-    }
+    // // Reload bind9.service
+    // err = exec.Command("systemctl", "restart", "bind9.service").Run()
+    // if err != nil {
+    //     return err
+    // }
 
     // Reload named.service
     err = exec.Command("systemctl", "restart", "named.service").Run()
