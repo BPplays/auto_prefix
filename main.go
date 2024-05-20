@@ -64,7 +64,7 @@ func main() {
 		}
 
         // Get the current IPv6 prefix
-        currentIPv6Prefix, err := getCurrentIPv6Prefix()
+        currentIPv6Prefix, err := getCurrentIPv6Prefix(interfaceName)
         if err != nil {
             fmt.Println("Error:", err)
             return
@@ -135,70 +135,6 @@ func get_ut() (string) {
 	return ut
 }
 
-// Function to get the current IPv6 prefix
-func getCurrentIPv6Prefix() (string, error) {
-	// Specify the network interface name
-	// interfaceName := "eth0" // Change this to your desired interface name
-
-	// Get network interface
-	iface, err := net.InterfaceByName(interfaceName)
-	if err != nil {
-		return "", err
-	}
-
-	// Get addresses for the interface
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return "", err
-	}
-
-	// Initialize variables to store the IPv6 prefix
-	var ipv6Prefix string
-
-	// Iterate over addresses to find the IPv6 prefix
-	for _, addr := range addrs {
-		// Check if it's an IPv6 address and not temporary
-		if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() == nil && !ipnet.IP.IsLinkLocalUnicast() && ipnet.IP.IsGlobalUnicast() && ipnet.IP.To16() != nil {
-			ipv6Prefix = getIPv6Prefix(ipnet)
-			break
-		}
-	}
-
-	// If no IPv6 prefix found, return an error
-	if ipv6Prefix == "" {
-		return "", fmt.Errorf("no IPv6 prefix found")
-	}
-
-	return ipv6Prefix, nil
-}
-
-// Function to extract the IPv6 prefix from an IPNet object and pad it to /64 length
-func getIPv6Prefix(ipnet *net.IPNet) string {
-    // Get the network portion of the IP
-    network := ipnet.IP.Mask(ipnet.Mask)
-
-    // Convert the network portion to a string representation
-    ipv6Prefix := network.String()
-
-    // If the prefix length is less than 64, pad it with zeros
-    if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") {
-        ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
-        padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
-        ipv6Prefix += padding[len(ipv6Prefix):]          // Add padding to reach /64 length
-    }
-
-    // Ensure it ends with a single colon
-    if !strings.HasSuffix(ipv6Prefix, ":") {
-        ipv6Prefix += ":"
-    }
-
-    // Remove one colon until the character before the last is not a colon
-    for strings.HasSuffix(ipv6Prefix, "::") {
-        ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
-    }
-
-    return ipv6Prefix
-}
 
 // Function to load files from zones.master directory, replace '#@ipv6_prefix@#::@' with the obtained prefix,
 // and save them to the zones directory
@@ -357,3 +293,154 @@ func restart_dns() error {
 
     return nil
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//! ====== ip part starts
+
+
+
+
+// isULA checks if the given IP address is a Unique Local Address (ULA).
+func isULA(ip net.IP) bool {
+	// ULA range is fc00::/7
+	ula := &net.IPNet{
+		IP:   net.ParseIP("fc00::"),
+		Mask: net.CIDRMask(7, 128),
+	}
+	return ula.Contains(ip)
+}
+
+// isLinkLocal checks if the given IP address is a link-local address.
+func isLinkLocal(ip net.IP) bool {
+	// Link-local range is fe80::/10
+	linkLocal := &net.IPNet{
+		IP:   net.ParseIP("fe80::"),
+		Mask: net.CIDRMask(10, 128),
+	}
+	return linkLocal.Contains(ip)
+}
+
+// isValidIPAddress checks if an IP address is not link-local, not ULA, and not loopback.
+func isValidIPAddress(ip net.IP) bool {
+	if ip == nil {
+		return false // Invalid IP address
+	}
+
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || !ip.IsGlobalUnicast() || ip.To4() != nil || isLinkLocal(ip) || isULA(ip) {
+		return false
+	}
+
+	return true
+}
+
+
+// addrToIP converts a net.Addr to a net.IP if possible.
+func addrToIP(addr net.Addr) (net.IP, error) {
+	switch v := addr.(type) {
+	case *net.IPAddr:
+		return v.IP, nil
+	case *net.IPNet:
+		return v.IP, nil
+	case *net.TCPAddr:
+		return v.IP, nil
+	case *net.UDPAddr:
+		return v.IP, nil
+	default:
+		return nil, fmt.Errorf("unsupported address type: %T", addr)
+	}
+}
+
+// Function to get the current IPv6 prefix
+func getCurrentIPv6Prefix(interfaceName string) (string, error) {
+	// Specify the network interface name
+	// interfaceName := "eth0" // Change this to your desired interface name
+
+	// Get network interface
+	iface, err := net.InterfaceByName(interfaceName)
+	if err != nil {
+		return "", err
+	}
+
+	// Get addresses for the interface
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", err
+	}
+
+	// Initialize variables to store the IPv6 prefix
+	var ipv6Prefix string
+
+	// Iterate over addresses to find the IPv6 prefix
+	var ip net.IP
+	for _, addr := range addrs {
+		// Check if it's an IPv6 address and not temporary
+		ip, err = addrToIP(addr)
+		if err != nil {
+			continue
+		}
+		if isValidIPAddress(ip) {
+			ipnet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ipv6Prefix = getIPv6Prefix(ipnet)
+			break
+		}
+	}
+
+	// If no IPv6 prefix found, return an error
+	if ipv6Prefix == "" {
+		return "", fmt.Errorf("no IPv6 prefix found")
+	}
+
+	return ipv6Prefix, nil
+}
+
+// Function to extract the IPv6 prefix from an IPNet object and pad it to /64 length
+func getIPv6Prefix(ipnet *net.IPNet) string {
+	// Get the network portion of the IP
+	network := ipnet.IP.Mask(ipnet.Mask)
+
+	// Convert the network portion to a string representation
+	ipv6Prefix := network.String()
+
+	// If the prefix length is less than 64, pad it with zeros
+	if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") {
+		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
+		padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
+		ipv6Prefix += padding[len(ipv6Prefix):]          // Add padding to reach /64 length
+	}
+
+	// Ensure it ends with a single colon
+	if !strings.HasSuffix(ipv6Prefix, ":") {
+		ipv6Prefix += ":"
+	}
+
+	// Remove one colon until the character before the last is not a colon
+	for strings.HasSuffix(ipv6Prefix, "::") {
+		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
+	}
+
+	return ipv6Prefix
+}
+
+
+
+
+
+
+
+
+
