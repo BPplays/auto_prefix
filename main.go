@@ -137,39 +137,39 @@ func get_ut() (string) {
 
 // Function to get the current IPv6 prefix
 func getCurrentIPv6Prefix() (string, error) {
-    // Specify the network interface name
-    // interfaceName := "eth0" // Change this to your desired interface name
+	// Specify the network interface name
+	// interfaceName := "eth0" // Change this to your desired interface name
 
-    // Get network interface
-    iface, err := net.InterfaceByName(interfaceName)
-    if err != nil {
-        return "", err
-    }
+	// Get network interface
+	iface, err := net.InterfaceByName(interfaceName)
+	if err != nil {
+		return "", err
+	}
 
-    // Get addresses for the interface
-    addrs, err := iface.Addrs()
-    if err != nil {
-        return "", err
-    }
+	// Get addresses for the interface
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", err
+	}
 
-    // Initialize variables to store the IPv6 prefix
-    var ipv6Prefix string
+	// Initialize variables to store the IPv6 prefix
+	var ipv6Prefix string
 
-    // Iterate over addresses to find the IPv6 prefix
-    for _, addr := range addrs {
-        // Check if it's an IPv6 address and not temporary
-        if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() == nil && !ipnet.IP.IsLinkLocalUnicast() {
-            ipv6Prefix = getIPv6Prefix(ipnet)
-            break
-        }
-    }
+	// Iterate over addresses to find the IPv6 prefix
+	for _, addr := range addrs {
+		// Check if it's an IPv6 address and not temporary
+		if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() == nil && !ipnet.IP.IsLinkLocalUnicast() && ipnet.IP.IsGlobalUnicast() && ipnet.IP.To16() != nil {
+			ipv6Prefix = getIPv6Prefix(ipnet)
+			break
+		}
+	}
 
-    // If no IPv6 prefix found, return an error
-    if ipv6Prefix == "" {
-        return "", fmt.Errorf("no IPv6 prefix found")
-    }
+	// If no IPv6 prefix found, return an error
+	if ipv6Prefix == "" {
+		return "", fmt.Errorf("no IPv6 prefix found")
+	}
 
-    return ipv6Prefix, nil
+	return ipv6Prefix, nil
 }
 
 // Function to extract the IPv6 prefix from an IPNet object and pad it to /64 length
