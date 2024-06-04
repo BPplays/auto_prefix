@@ -348,10 +348,17 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 
 	i := 0
     for index := 0; i <= requiredLength; {
-        if ipv6Prefixrn[index] != ':' {
+		if len len(ipv6Prefixrn)-1 < index {
+			if ipv6Prefixrn[index] != ':' {
+				i +=1
+			}
+			ipv6psb.WriteRune(ipv6Prefixrn[index])
+		} else {
 			i +=1
+			ipv6psb.WriteRune('0')
 		}
-		ipv6psb.WriteRune(ipv6Prefixrn[index])
+
+		
 		index +=1
     }
 
