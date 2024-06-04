@@ -334,7 +334,7 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 
 	// Convert the network portion to a string representation
 	ipv6Prefix := network.String()
-	ipv6Prefixrn := []rune(ipv6Prefix)
+	
 
 	// If the prefix length is less than 64, pad it with zeros
 	requiredLength := int(math.Floor(float64(prefix_len / 4)))
@@ -351,6 +351,19 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 
 	i := 0
 	times_nocol := 0
+
+	// Split the string by ":"
+	parts := strings.Split(ipv6Prefix, ":")
+
+	// Pad each part with leading zeros
+	for i, part := range parts {
+		parts[i] = fmt.Sprintf("%04s", part)
+	}
+
+	// Join the parts with ":"
+	output := strings.Join(parts, ":")
+	ipv6Prefixrn := []rune(output)
+
     for index := 0; i <= requiredLength-1; {
 		if index >= 0 && index < len(ipv6Prefixrn) {
 			if ipv6Prefixrn[index] != ':' {
@@ -365,9 +378,6 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 			ipv6psb.WriteRune(ipv6Prefixrn[index])
 		} else {
 			i +=1
-			println("adding nocol bef: ", i)
-			i += 4 - times_nocol
-			println("adding nocol: ", i, 4 - times_nocol)
 			
 			ipv6psb.WriteRune('0')
 		}
