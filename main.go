@@ -338,11 +338,11 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 
 	// If the prefix length is less than 64, pad it with zeros
 	requiredLength := int(math.Floor(float64(prefix_len / 4)))
-	if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") - (64 - prefix_len) {
-		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
-		padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
-		ipv6Prefix += padding[len(ipv6Prefix):requiredLength]          // Add padding to reach /64 length
-	}
+	// if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") - (64 - prefix_len) {
+	// 	ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
+	// 	padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
+	// 	ipv6Prefix += padding[len(ipv6Prefix):requiredLength]          // Add padding to reach /64 length
+	// }
 
 	var ipv6psb strings.Builder
 
