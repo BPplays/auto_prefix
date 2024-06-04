@@ -297,10 +297,11 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 	ipv6Prefix := network.String()
 
 	// If the prefix length is less than 64, pad it with zeros
+	requiredLength := int(math.Floor(float64(prefix_len / 4)))
 	if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") - (64 - prefix_len) {
 		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
 		padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
-		ipv6Prefix += padding[len(ipv6Prefix):]          // Add padding to reach /64 length
+		ipv6Prefix += padding[len(ipv6Prefix):requiredLength]          // Add padding to reach /64 length
 	}
 
 	maxVLANs := (int16(math.Pow(2, float64(64-prefix_len))) -1)
@@ -314,7 +315,7 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
 	}
 
-	ipv6Prefix += fmt.Sprintf("%04X", vlan)
+	ipv6Prefix += fmt.Sprintf("%X", vlan)
 
 	// Ensure it ends with a single colon
 	if !strings.HasSuffix(ipv6Prefix, ":") {
