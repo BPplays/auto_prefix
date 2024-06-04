@@ -355,7 +355,7 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 			ipv6psb.WriteRune(ipv6Prefixrn[index])
 		} else {
 			i +=1
-			println("fkldjs ", ipv6psb.String(), ipv6Prefixrn, ipv6Prefix)
+			println("fkldjs ", ipv6psb.String(), string(ipv6Prefixrn), ipv6Prefix)
 			ipv6psb.WriteRune('0')
 		}
 		index +=1
