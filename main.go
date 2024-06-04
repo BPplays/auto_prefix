@@ -355,10 +355,9 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 			ipv6psb.WriteRune(ipv6Prefixrn[index])
 		} else {
 			i +=1
+			println("fkldjs ", ipv6psb.String())
 			ipv6psb.WriteRune('0')
 		}
-
-		
 		index +=1
     }
 
@@ -372,6 +371,7 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 		vlan -= int16(math.Pow(2, float64(64-prefix_len)))
 		fmt.Println("trimming vlan to VLAN:", vlan)
 	}
+	fmt.Println("VLAN hex:", fmt.Sprintf("%X", vlan))
 
 	for strings.HasSuffix(ipv6Prefix, ":") {
 		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
