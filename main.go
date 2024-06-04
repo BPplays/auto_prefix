@@ -288,6 +288,45 @@ func get_prefix(interfaceName string, vlan int16) (string, error) {
 	return ipv6Prefix, nil
 }
 
+// // Convert IPv6 address to a big integer
+// func IPv6ToBigInt(ipv6Addr string) (*big.Int, error) {
+// 	ip := net.ParseIP(ipv6Addr)
+// 	if ip == nil {
+// 		return nil, fmt.Errorf("invalid IP address")
+// 	}
+
+// 	// Extract the IPv6 bytes
+// 	ip = ip.To16()
+// 	if ip == nil {
+// 		return nil, fmt.Errorf("not an IPv6 address")
+// 	}
+
+// 	// Convert bytes to big integer
+// 	bigInt := new(big.Int)
+// 	bigInt.SetBytes(ip)
+
+// 	return bigInt, nil
+// }
+
+// // Convert big integer to an IPv6 address
+// func BigIntToIPv6(bigInt *big.Int) (string, error) {
+// 	// Convert big integer to bytes
+// 	bytes := bigInt.Bytes()
+
+// 	// IPv6 address must be 16 bytes
+// 	if len(bytes) > 16 {
+// 		return "", fmt.Errorf("integer too large for an IPv6 address")
+// 	}
+
+// 	// Pad with leading zeros if necessary
+// 	paddedBytes := make([]byte, 16)
+// 	copy(paddedBytes[16-len(bytes):], bytes)
+
+// 	// Convert bytes to IP
+// 	ip := net.IP(paddedBytes)
+// 	return ip.String(), nil
+// }
+
 // Function to extract the IPv6 prefix from an IPNet object and pad it to /64 length
 func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 	// Get the network portion of the IP
@@ -295,6 +334,7 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 
 	// Convert the network portion to a string representation
 	ipv6Prefix := network.String()
+	ipv6Prefixrn := []rune(ipv6Prefix)
 
 	// If the prefix length is less than 64, pad it with zeros
 	requiredLength := int(math.Floor(float64(prefix_len / 4)))
@@ -304,6 +344,20 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 		ipv6Prefix += padding[len(ipv6Prefix):requiredLength]          // Add padding to reach /64 length
 	}
 
+	var ipv6psb strings.Builder
+
+	i := 0
+    for index := 0; i <= requiredLength; {
+        if ipv6Prefixrn[index] != ':' {
+			i +=1
+		}
+		ipv6psb.WriteRune(ipv6Prefixrn[index])
+		index +=1
+    }
+
+	ipv6Prefix = ipv6psb.String()
+
+
 	maxVLANs := (int16(math.Pow(2, float64(64-prefix_len))) -1)
 
 
@@ -311,6 +365,7 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 		vlan -= int16(math.Pow(2, float64(64-prefix_len)))
 		fmt.Println("trimming vlan to VLAN:", vlan)
 	}
+
 	for strings.HasSuffix(ipv6Prefix, ":") {
 		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
 	}
