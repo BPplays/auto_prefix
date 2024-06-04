@@ -351,7 +351,7 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 
 	i := 0
 	times_nocol := 0
-    for index := 0; i <= requiredLength-0; {
+    for index := 0; i <= requiredLength-1; {
 		if index >= 0 && index < len(ipv6Prefixrn) {
 			if ipv6Prefixrn[index] != ':' {
 				i +=1
