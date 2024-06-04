@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"math"
 	"math/rand"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -22,7 +24,7 @@ const (
 	named_master = "/etc/bind/named.conf.master"
 	named = "/etc/bind/named.conf"
     configFile     = "/etc/bind/.ipv6_prefix"
-	prefix_len = 64
+	prefix_len = 60
 	interfaceName = "ens33"
     checkInterval  = 50 * time.Second
 )
@@ -50,7 +52,35 @@ func loadAndSaveNamedConf(ipv6Prefix string) error {
     return nil
 }
 
-
+func replaceIPv6Prefix(content, interfaceName string) string {
+    // Define the regular expression pattern
+    pattern := `#@ipv6_prefix@#(\d+)::@`
+    re := regexp.MustCompile(pattern)
+    
+    // Find all matches in the content
+    matches := re.FindAllStringSubmatch(content, -1)
+    var vlan int16
+    // Replace each match
+    for _, match := range matches {
+        fullMatch := match[0]
+        vlanStr := match[1] // Extract the VLAN number
+        vlant, err := strconv.Atoi(vlanStr)
+        if err != nil {
+            // Handle conversion error
+            fmt.Println("Error converting VLAN number:", err)
+            continue
+        }
+		vlan = int16(vlant)
+        // Call get_prefix function with interfaceName and vlan
+        replacement, err := get_prefix(interfaceName, vlan)
+		if err != nil {
+			log.Fatalln(err)
+		}
+        content = strings.ReplaceAll(content, fullMatch, replacement)
+    }
+    
+    return content
+}
 
 func main() {
     var lastIPv6Prefix string = ""
@@ -173,7 +203,8 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
         }
 
         // Replace '#@ipv6_prefix@#::@' with the obtained prefix
-        replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
+        // replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
+		replacedContent := replaceIPv6Prefix(string(content), interfaceName)
 		replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
 		replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", IPv6PrefixToReverseDNS(ipv6Prefix, prefix_len))
 
@@ -206,7 +237,92 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 // }
 
 
+// Function to get the current IPv6 prefix
+func get_prefix(interfaceName string, vlan int16) (string, error) {
+	// Specify the network interface name
+	// interfaceName := "eth0" // Change this to your desired interface name
 
+	// Get network interface
+	iface, err := net.InterfaceByName(interfaceName)
+	if err != nil {
+		return "", err
+	}
+
+	// Get addresses for the interface
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return "", err
+	}
+
+	// Initialize variables to store the IPv6 prefix
+	var ipv6Prefix string
+
+	// Iterate over addresses to find the IPv6 prefix
+	var ip net.IP
+	for _, addr := range addrs {
+		// Check if it's an IPv6 address and not temporary
+		ip, err = addrToIP(addr)
+		if err != nil {
+			continue
+		}
+		if isValidIPAddress(ip) {
+			ipnet, ok := addr.(*net.IPNet)
+			if !ok {
+				continue
+			}
+			ipv6Prefix = get_prefix2(ipnet, vlan)
+			break
+		}
+	}
+
+	// If no IPv6 prefix found, return an error
+	if ipv6Prefix == "" {
+		return "", fmt.Errorf("no IPv6 prefix found")
+	}
+
+	return ipv6Prefix, nil
+}
+
+// Function to extract the IPv6 prefix from an IPNet object and pad it to /64 length
+func get_prefix2(ipnet *net.IPNet, vlan int16) string {
+	// Get the network portion of the IP
+	network := ipnet.IP.Mask(ipnet.Mask)
+
+	// Convert the network portion to a string representation
+	ipv6Prefix := network.String()
+
+	// If the prefix length is less than 64, pad it with zeros
+	if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") - (64 - prefix_len) {
+		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
+		padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
+		ipv6Prefix += padding[len(ipv6Prefix):]          // Add padding to reach /64 length
+	}
+
+	maxVLANs := (int16(math.Pow(2, float64(64-prefix_len))) -1)
+
+
+	for vlan > maxVLANs {
+		vlan -= int16(math.Pow(2, float64(64-prefix_len)))
+		fmt.Println("trimming vlan to VLAN:", vlan)
+	}
+	for strings.HasSuffix(ipv6Prefix, ":") {
+		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
+	}
+
+	ipv6Prefix += fmt.Sprintf("%04X", vlan)
+
+	// Ensure it ends with a single colon
+	if !strings.HasSuffix(ipv6Prefix, ":") {
+		ipv6Prefix += ":"
+	}
+
+	// Remove one colon until the character before the last is not a colon
+	for strings.HasSuffix(ipv6Prefix, "::") {
+		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
+	}
+	fmt.Println("VLAN:", vlan)
+	return ipv6Prefix
+}
 
 
 func IPv6PrefixToReverseDNS(prefix string, prefLen int) string {
