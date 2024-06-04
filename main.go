@@ -204,7 +204,12 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
         // Replace '#@ipv6_prefix@#::@' with the obtained prefix
         // replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
+		base, err := get_prefix(interfaceName, 0)
+		if err != nil {
+
+		}
 		replacedContent := replaceIPv6Prefix(string(content), interfaceName)
+		replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#::@", base)
 		replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
 		replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", IPv6PrefixToReverseDNS(ipv6Prefix, prefix_len))
 
