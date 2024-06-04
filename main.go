@@ -32,7 +32,7 @@ const (
 var ut string = ""
 
 func loadAndSaveNamedConf(ipv6Prefix string) error {
-    reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, prefix_len)
+    reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64) // todo make use prefix len
     fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
 
 
