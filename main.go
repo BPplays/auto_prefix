@@ -357,7 +357,9 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 				i +=1
 				times_nocol += 1
 			} else {
+				println("adding nocol bef: ", i)
 				i += 4 - times_nocol
+				println("adding nocol: ", i, 4 - times_nocol)
 				times_nocol = 0
 			}
 			ipv6psb.WriteRune(ipv6Prefixrn[index])
