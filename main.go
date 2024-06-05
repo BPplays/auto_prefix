@@ -388,13 +388,14 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 	ipv6Prefix = ipv6psb.String()
 
 
-	maxVLANs := (int16(math.Pow(2, float64(64-prefix_len))) -1)
+	maxVLANs := int16(math.Pow(2, float64(64-prefix_len)))
 
 
-	for vlan > maxVLANs {
-		vlan -= int16(math.Pow(2, float64(64-prefix_len)))
-		fmt.Println("trimming vlan to VLAN:", vlan)
-	}
+	// for vlan > maxVLANs {
+	// 	vlan -= int16(math.Pow(2, float64(64-prefix_len)))
+	// 	fmt.Println("trimming vlan to VLAN:", vlan)
+	// }
+	vlan %= maxVLANs
 	fmt.Println("VLAN hex:", fmt.Sprintf("%X", vlan))
 
 
