@@ -211,7 +211,7 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 		replacedContent := replaceIPv6Prefix(string(content), interfaceName)
 		replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#::@", base)
 		replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
-		replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", IPv6PrefixToReverseDNS(ipv6Prefix, prefix_len))
+		replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", IPv6PrefixToReverseDNS(ipv6Prefix, 64)) // todo make work with pref len
 
         // Save the modified content to the zones directory with the same filename
         outputFile := filepath.Join(zonesDir, file.Name())
