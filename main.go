@@ -87,6 +87,7 @@ func main() {
 
 	var sleep_sec float64
 	var sleep_dur time.Duration
+	var sleep_ut int64
 
 
 	fmt.Println("starting program")
@@ -100,6 +101,7 @@ func main() {
 		// }
 
 		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
+		sleep_ut = time.Now().Add(sleep_dur).Unix()
 
 
 		time.Sleep(sleep_dur)
@@ -123,7 +125,7 @@ func main() {
 			fmt.Println(strings.Repeat("=", 50))
 			fmt.Print("\n")
 
-			fmt.Printf("slept until: %v\n\n", time.Now().Add(sleep_dur).Unix())
+			fmt.Printf("slept until: %v\n\n", sleep_ut)
 			fmt.Printf("prefix: %v\n", currentIPv6Prefix)
 
 
