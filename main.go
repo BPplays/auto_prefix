@@ -92,13 +92,17 @@ func main() {
 	// Start an infinite loop
 	for {
 		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
+
 		if sleep_sec >= checkInterval.Seconds() {
 			sleep_sec = 0
 		}
+
 		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
-		time.Sleep(sleep_dur)
 
 		fmt.Printf("sleeping until: %v", time.Now().Add(sleep_dur).Unix())
+
+		time.Sleep(sleep_dur)
+
 
 		if ut != get_ut() {
 			ut = get_ut()
