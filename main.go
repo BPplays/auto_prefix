@@ -88,13 +88,22 @@ func main() {
 	var sleep_sec float64
 	var sleep_dur time.Duration
 
+	var first_run bool = true
+	var print_run bool = true
+
+	fmt.Println("starting program")
 
 	// Start an infinite loop
 	for {
-		fmt.Print("\n\n\n\n")
-		fmt.Println(strings.Repeat("=", 50))
-		fmt.Println(strings.Repeat("=", 50))
-		fmt.Print("\n")
+		if first_run {
+			print_run = true
+		}
+		if print_run {
+			fmt.Print("\n\n\n\n")
+			fmt.Println(strings.Repeat("=", 50))
+			fmt.Println(strings.Repeat("=", 50))
+			fmt.Print("\n")
+		}
 		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
 
 		// if sleep_sec >= checkInterval.Seconds() {
@@ -103,7 +112,9 @@ func main() {
 
 		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
 
-		fmt.Printf("sleeping until: %v\n\n", time.Now().Add(sleep_dur).Unix())
+		if print_run {
+			fmt.Printf("sleeping until: %v\n\n", time.Now().Add(sleep_dur).Unix())
+		}
 
 		time.Sleep(sleep_dur)
 
@@ -121,6 +132,7 @@ func main() {
 
 		// If the current prefix is different from the last one, update the zone files and reload services
 		if currentIPv6Prefix != lastIPv6Prefix {
+			print_run = true
 			fmt.Printf("prefix: %v\n", currentIPv6Prefix)
 
 
@@ -147,8 +159,11 @@ func main() {
 
 		// Sleep for the specified interval before checking again
 		// time.Sleep(checkInterval)
-		fmt.Println(strings.Repeat("=", 50))
-		fmt.Println(strings.Repeat("=", 50))
+		if print_run {
+			fmt.Println(strings.Repeat("=", 50))
+			fmt.Println(strings.Repeat("=", 50))
+		}
+		print_run = false
 	}
 }
 
