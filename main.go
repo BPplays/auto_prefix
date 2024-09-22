@@ -91,7 +91,7 @@ func main() {
 
 	// Start an infinite loop
 	for {
-		fmt.Print("\n\n\n")
+		fmt.Print("\n\n\n\n")
 		fmt.Println(strings.Repeat("=", 50))
 		fmt.Println(strings.Repeat("=", 50))
 		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
