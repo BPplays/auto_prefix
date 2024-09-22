@@ -91,6 +91,9 @@ func main() {
 
 	// Start an infinite loop
 	for {
+		fmt.Print("\n\n\n")
+		fmt.Println(strings.Repeat("=", 50))
+		fmt.Println(strings.Repeat("=", 50))
 		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
 
 		if sleep_sec >= checkInterval.Seconds() {
@@ -99,7 +102,7 @@ func main() {
 
 		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
 
-		fmt.Printf("sleeping until: %v", time.Now().Add(sleep_dur).Unix())
+		fmt.Printf("sleeping until: %v\n\n", time.Now().Add(sleep_dur).Unix())
 
 		time.Sleep(sleep_dur)
 
@@ -143,6 +146,8 @@ func main() {
 
 		// Sleep for the specified interval before checking again
 		// time.Sleep(checkInterval)
+		fmt.Println(strings.Repeat("=", 50))
+		fmt.Println(strings.Repeat("=", 50))
 	}
 }
 
