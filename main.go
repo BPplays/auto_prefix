@@ -19,24 +19,24 @@ import (
 )
 
 const (
-    zonesMasterDir = "/etc/bind/zones.master/"
-    zonesDir       = "/etc/bind/zones/"
+	zonesMasterDir = "/etc/bind/zones.master/"
+	zonesDir       = "/etc/bind/zones/"
 	named_master = "/etc/bind/named.conf.master"
 	named = "/etc/bind/named.conf"
-    configFile     = "/etc/bind/.ipv6_prefix"
+	configFile     = "/etc/bind/.ipv6_prefix"
 	prefix_len = 60
 	interfaceName = "ens33"
-    checkInterval  = 50 * time.Second
+	checkInterval  = 50 * time.Second
 )
 
 var ut string = ""
 
 func loadAndSaveNamedConf(ipv6Prefix string) error {
-    reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64) // todo make use prefix len
-    fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
+	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64) // todo make use prefix len
+	fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
 
 
- 
+
 	content, err := os.ReadFile(named_master)
 	if err != nil {
 		return err
@@ -49,85 +49,97 @@ func loadAndSaveNamedConf(ipv6Prefix string) error {
 		return err
 	}
 
-    return nil
+	return nil
 }
 
 func replaceIPv6Prefix(content, interfaceName string) string {
-    // Define the regular expression pattern
-    pattern := `#@ipv6_prefix@#(\d+)::@`
-    re := regexp.MustCompile(pattern)
-    
-    // Find all matches in the content
-    matches := re.FindAllStringSubmatch(content, -1)
-    var vlan int16
-    // Replace each match
-    for _, match := range matches {
-        fullMatch := match[0]
-        vlanStr := match[1] // Extract the VLAN number
-        vlant, err := strconv.Atoi(vlanStr)
-        if err != nil {
-            // Handle conversion error
-            fmt.Println("Error converting VLAN number:", err)
-            continue
-        }
+	// Define the regular expression pattern
+	pattern := `#@ipv6_prefix@#(\d+)::@`
+	re := regexp.MustCompile(pattern)
+
+	// Find all matches in the content
+	matches := re.FindAllStringSubmatch(content, -1)
+	var vlan int16
+	// Replace each match
+	for _, match := range matches {
+		fullMatch := match[0]
+		vlanStr := match[1] // Extract the VLAN number
+		vlant, err := strconv.Atoi(vlanStr)
+		if err != nil {
+			// Handle conversion error
+			fmt.Println("Error converting VLAN number:", err)
+			continue
+		}
 		vlan = int16(vlant)
-        // Call get_prefix function with interfaceName and vlan
-        replacement, err := get_prefix(interfaceName, vlan)
+		// Call get_prefix function with interfaceName and vlan
+		replacement, err := get_prefix(interfaceName, vlan)
 		if err != nil {
 			log.Fatalln(err)
 		}
-        content = strings.ReplaceAll(content, fullMatch, replacement)
-    }
-    
-    return content
+		content = strings.ReplaceAll(content, fullMatch, replacement)
+	}
+
+	return content
 }
 
 func main() {
-    var lastIPv6Prefix string = ""
+	var lastIPv6Prefix string = ""
+
+	var sleep_sec float64
+	var sleep_dur time.Duration
 
 
+	// Start an infinite loop
+	for {
+		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
+		if sleep_sec >= checkInterval.Seconds() {
+			sleep_sec = 0
+		}
+		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
+		time.Sleep(sleep_dur)
 
-    // Start an infinite loop
-    for {
+		fmt.Printf("sleeping until: %v", time.Now().Add(sleep_dur).Unix())
+
 		if ut != get_ut() {
 			ut = get_ut()
 		}
 
-        // Get the current IPv6 prefix
-        currentIPv6Prefix, err := getCurrentIPv6Prefix(interfaceName)
-        if err != nil {
-            fmt.Println("Error:", err)
-            return
-        }
+		// Get the current IPv6 prefix
+		currentIPv6Prefix, err := getCurrentIPv6Prefix(interfaceName)
+		if err != nil {
+			fmt.Println("Error:", err)
+			return
+		}
 
-        // If the current prefix is different from the last one, update the zone files and reload services
-        if currentIPv6Prefix != lastIPv6Prefix {
+		// If the current prefix is different from the last one, update the zone files and reload services
+		if currentIPv6Prefix != lastIPv6Prefix {
 			fmt.Printf("prefix: %v\n", currentIPv6Prefix)
 
-            err := loadAndSaveZoneFiles(currentIPv6Prefix)
-            if err != nil {
-                fmt.Println("Error:", err)
-                return
-            }
-            err = loadAndSaveNamedConf(currentIPv6Prefix)
-            if err != nil {
-                fmt.Println("Error:", err)
-                return
-            }
 
-            err = restart_dns()
-            if err != nil {
-                fmt.Println("Error:", err)
-                return
-            }
+			err := loadAndSaveZoneFiles(currentIPv6Prefix)
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+			err = loadAndSaveNamedConf(currentIPv6Prefix)
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
 
-            lastIPv6Prefix = currentIPv6Prefix
-            fmt.Println("Zone files updated successfully.")
-        }
+			err = restart_dns()
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
 
-        // Sleep for the specified interval before checking again
-        time.Sleep(checkInterval)
-    }
+			lastIPv6Prefix = currentIPv6Prefix
+			fmt.Println("Zone files updated successfully.")
+		}
+
+		// Sleep for the specified interval before checking again
+		// time.Sleep(checkInterval)
+	}
 }
 
 func get_date8() (string) {
@@ -169,16 +181,16 @@ func get_ut() (string) {
 // Function to load files from zones.master directory, replace '#@ipv6_prefix@#::@' with the obtained prefix,
 // and save them to the zones directory
 func loadAndSaveZoneFiles(ipv6Prefix string) error {
-    // // Open the zones.master directory
-    // files, err := ioutil.ReadDir(zonesMasterDir)
-    // if err != nil {
-    //     return err
-    // }
+	// // Open the zones.master directory
+	// files, err := ioutil.ReadDir(zonesMasterDir)
+	// if err != nil {
+	//     return err
+	// }
 
 	entries, err := os.ReadDir(zonesMasterDir)
-    if err != nil {
-        return err
-    }
+	if err != nil {
+		return err
+	}
 	files := make([]fs.FileInfo, 0, len(entries))
 	for _, entry := range entries {
 		info, err := entry.Info()
@@ -188,22 +200,22 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 		files = append(files, info)
 	}
 
-    // Iterate over files in the zones.master directory
-    for _, file := range files {
-        // Skip directories
-        if file.IsDir() {
-            continue
-        }
+	// Iterate over files in the zones.master directory
+	for _, file := range files {
+		// Skip directories
+		if file.IsDir() {
+			continue
+		}
 
-        // Read the contents of the file
-        filePath := filepath.Join(zonesMasterDir, file.Name())
-        content, err := os.ReadFile(filePath)
-        if err != nil {
-            return err
-        }
+		// Read the contents of the file
+		filePath := filepath.Join(zonesMasterDir, file.Name())
+		content, err := os.ReadFile(filePath)
+		if err != nil {
+			return err
+		}
 
-        // Replace '#@ipv6_prefix@#::@' with the obtained prefix
-        // replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
+		// Replace '#@ipv6_prefix@#::@' with the obtained prefix
+		// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
 		base, err := get_prefix(interfaceName, 0)
 		if err != nil {
 
@@ -214,15 +226,15 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 		replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
 		replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", reverseDNS)
 
-        // Save the modified content to the zones directory with the same filename
-        outputFile := filepath.Join(zonesDir, file.Name())
-        err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
-        if err != nil {
-            return err
-        }
-    }
+		// Save the modified content to the zones directory with the same filename
+		outputFile := filepath.Join(zonesDir, file.Name())
+		err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
+		if err != nil {
+			return err
+		}
+	}
 
-    return nil
+	return nil
 }
 
 // // Function to reload bind9.service and named.service
@@ -335,7 +347,7 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 
 	// Convert the network portion to a string representation
 	ipv6Prefix := network.String()
-	
+
 
 	// If the prefix length is less than 64, pad it with zeros
 	requiredLength := int(math.Floor(float64(prefix_len / 4)))
@@ -365,7 +377,7 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 	output := strings.Join(parts, ":")
 	ipv6Prefixrn := []rune(output)
 
-    for index := 0; i <= requiredLength-1; {
+	for index := 0; i <= requiredLength-1; {
 		if index >= 0 && index < len(ipv6Prefixrn) {
 			if ipv6Prefixrn[index] != ':' {
 				i +=1
@@ -379,11 +391,11 @@ func get_prefix2(ipnet *net.IPNet, vlan int16) string {
 			ipv6psb.WriteRune(ipv6Prefixrn[index])
 		} else {
 			i +=1
-			
+
 			ipv6psb.WriteRune('0')
 		}
 		index +=1
-    }
+	}
 	println("fkldjs ", ipv6psb.String(), string(ipv6Prefixrn), ipv6Prefix)
 
 	ipv6Prefix = ipv6psb.String()
@@ -459,11 +471,11 @@ func restart_dns() error {
 	wait_time_mul := 5.0
 	wait_time_def := rand.Float64() * 15
 
-    hostname, err := os.Hostname()
-    if err != nil {
-        fmt.Println("cant get hostname. Error:", err)
-        wait_time = wait_time_def
-    } else {
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Println("cant get hostname. Error:", err)
+		wait_time = wait_time_def
+	} else {
 		spl := strings.Split(hostname, ".")
 		dev_name = spl[0]
 
@@ -473,7 +485,7 @@ func restart_dns() error {
 				numericStr += string(char)
 			}
 		}
-	
+
 		// Convert string to float64
 		num, err := strconv.ParseFloat(numericStr, 64)
 		if err != nil {
@@ -486,19 +498,19 @@ func restart_dns() error {
 
 	time.Sleep(time.Duration(wait_time * float64(time.Second)))
 
-    // // Reload bind9.service
-    // err = exec.Command("systemctl", "restart", "bind9.service").Run()
-    // if err != nil {
-    //     return err
-    // }
+	// // Reload bind9.service
+	// err = exec.Command("systemctl", "restart", "bind9.service").Run()
+	// if err != nil {
+	//     return err
+	// }
 
-    // Reload named.service
-    err = exec.Command("systemctl", "restart", "named.service").Run()
-    if err != nil {
-        return err
-    }
+	// Reload named.service
+	err = exec.Command("systemctl", "restart", "named.service").Run()
+	if err != nil {
+		return err
+	}
 
-    return nil
+	return nil
 }
 
 
