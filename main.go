@@ -30,7 +30,7 @@ const (
 	prefix_full_subnet_len = 64
 	if_file = "/etc/main_interface"
 	// interfaceName = "ens33"
-	checkInterval  = 50 * time.Second
+	checkInterval  = 5 * time.Second
 )
 
 var interfaceName = ""
@@ -177,6 +177,7 @@ func main() {
 
 	fmt.Println("starting program")
 	get_interfaceName()
+	fmt.Println("using if: ", interfaceName)
 
 	// Start an infinite loop
 	for {
