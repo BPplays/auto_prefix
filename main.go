@@ -223,6 +223,12 @@ func main() {
 				return
 			}
 
+			err = loadAndSaveDnsmasqConf(currentIPv6Prefix)
+			if err != nil {
+				fmt.Println("Error:", err)
+				return
+			}
+
 			err = restart_dns()
 			if err != nil {
 				fmt.Println("Error:", err)
@@ -614,10 +620,12 @@ func restart_dns() error {
 	//     return err
 	// }
 
+
 	// Reload named.service
 	err = exec.Command("systemctl", "restart", "named.service").Run()
+	err = exec.Command("systemctl", "reload", "dnsmasq.service").Run()
+
 	if err != nil {
-		return err
 	}
 
 	return nil
