@@ -119,13 +119,13 @@ func SetBit(ip_bytes []byte, bit int, setToOne bool) net.IP {
 func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.IP {
 	var addr_output net.IP
 
-	if end - 64 < start {
-		start = end - 64
-	}
+	// if end - 64 > start {
+	// 	start = end - 64
+	// }
 	addr_bytes := addr.To16()
 	fmt.Println("addr_bytes:", addr_bytes)
 
-	fmt.Printf("set bits: start: %v, end: %v", start, end)
+	fmt.Printf("set bits: start: %v, end: %v\n", start, end)
 	for i := end; i == start; i-- {
 		if i == start {
 			break
