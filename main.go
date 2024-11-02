@@ -129,7 +129,7 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 	fmt.Println("addr_bytes:", addr_bytes)
 
 	fmt.Printf("set bits: start: %v, end: %v\n", start, end)
-	for i := end; i == start; i-- {
+	for i := end; i >= start; i-- {
 		if i == start {
 			break
 		}
