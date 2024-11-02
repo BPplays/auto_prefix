@@ -646,7 +646,8 @@ func restart_dns() error {
 		fmt.Println(err)
 	}
 	fmt.Println("reloading dnsmasq")
-	err = exec.Command("systemctl", "reload", "dnsmasq.service").Run()
+	// err = exec.Command("systemctl", "reload", "dnsmasq.service").Run()
+	err = exec.Command("systemctl", "restart", "dnsmasq.service").Run()
 	if err != nil {
 		fmt.Println(err)
 	}
