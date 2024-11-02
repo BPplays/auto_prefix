@@ -43,7 +43,7 @@ func get_interfaceName() error {
 		return err
 	}
 
-	interfaceName = strings.TrimSpace(string(content))
+	interfaceName = string(content)
 
 	return nil
 }
@@ -134,6 +134,8 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 		addr_output = SetBit(addr_bytes, i, bit == 1)
 		// fmt.Printf("Bit %d: %d\n", i, bit)
 	}
+
+	fmt.Println("add_output:", addr_output)
 	return addr_output
 }
 
@@ -405,12 +407,15 @@ func get_prefix(interfaceName string, vlan uint64) (string, error) {
 			}
 			// (*ipnet).Mask = net.CIDRMask(prefix_len, 128)
 			ipv6Prefix = set_ipaddr_bits(ipnet.IP.Mask(net.CIDRMask(prefix_len, 128)), vlan, prefix_len, prefix_full_subnet_len)
+			fmt.Println("ipv6Prefix:", ipv6Prefix)
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
 			break
 		}
 	}
 
 	ipv6PrefixStr = ipv6Prefix.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
+
+	fmt.Println("ipv6Prefix:", ipv6PrefixStr)
 
 	// If no IPv6 prefix found, return an error
 	if ipv6PrefixStr == "" {
