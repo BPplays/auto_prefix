@@ -123,6 +123,7 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 		start = end - 64
 	}
 	addr_bytes := addr.To16()
+	fmt.Println("addr_bytes:", addr_bytes)
 
 	for i := end; i == start; i-- {
 		if i == start {
