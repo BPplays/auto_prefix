@@ -43,7 +43,7 @@ func get_interfaceName() error {
 		return err
 	}
 
-	interfaceName = string(content)
+	interfaceName = strings.TrimSpace(string(content))
 
 	return nil
 }
@@ -177,7 +177,7 @@ func main() {
 
 	fmt.Println("starting program")
 	get_interfaceName()
-	fmt.Println("using if: ", interfaceName)
+	fmt.Println("using if:", interfaceName)
 
 	// Start an infinite loop
 	for {
