@@ -98,7 +98,7 @@ func loadAndSaveDnsmasqConf(ipv6Prefix string) error {
 }
 
 // SetBit sets or clears a specific bit in the IP address based on the value of setToOne.
-func SetBit(ip_bytes net.IP, bit int, setToOne bool) net.IP {
+func SetBit(ip_bytes []byte, bit int, setToOne bool) net.IP {
 	// ip_bytes = ip_bytes.To16() // Convert to 16-byte IPv6 format to handle both IPv4 and IPv6
 	if ip_bytes == nil {
 		return nil // Return nil if the IP address is invalid
