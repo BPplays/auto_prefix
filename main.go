@@ -71,6 +71,7 @@ func loadAndSaveNamedConf(ipv6Prefix string) error {
 
 func loadAndSaveDnsmasqConf(ipv6Prefix string) error {
 
+	fmt.Println("loading dnsmasq")
 
 	content, err := os.ReadFile(dnsmasq_master)
 	if err != nil {
@@ -90,6 +91,8 @@ func loadAndSaveDnsmasqConf(ipv6Prefix string) error {
 	if err != nil {
 		return err
 	}
+
+	fmt.Println("saving dnsmasq")
 
 	return nil
 }
@@ -623,10 +626,15 @@ func restart_dns() error {
 
 	// Reload named.service
 	err = exec.Command("systemctl", "restart", "named.service").Run()
-	err = exec.Command("systemctl", "reload", "dnsmasq.service").Run()
-
 	if err != nil {
+		fmt.Println(err)
 	}
+	fmt.Println("reloading dnsmasq")
+	err = exec.Command("systemctl", "reload", "dnsmasq.service").Run()
+	if err != nil {
+		fmt.Println(err)
+	}
+
 
 	return nil
 }
