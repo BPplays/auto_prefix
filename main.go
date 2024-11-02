@@ -421,6 +421,10 @@ func get_prefix(interfaceName string, vlan uint64) (string, error) {
 
 	ipv6PrefixStr = ipv6Prefix.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
 
+	if strings.HasSuffix(ipv6PrefixStr, "::") {
+		ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, "::") + ":"
+	}
+
 	fmt.Println("ipv6Prefix:", ipv6PrefixStr)
 
 	// If no IPv6 prefix found, return an error
