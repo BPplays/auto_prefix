@@ -565,7 +565,9 @@ func get_prefix_padded(ipnet *net.IPNet, vlan uint64) string {
 
 func IPv6PrefixToReverseDNS(prefix string, prefLen int) string {
 	exp := ipaddr.NewIPAddressString(prefix + ":").GetAddress()
-	exp = exp.AdjustPrefixLen(ipaddr.BitCount(uint32(prefLen)))
+	if exp != nil {
+		exp = exp.AdjustPrefixLen(ipaddr.BitCount(uint32(prefLen)))
+	}
 
 	// Get the reverse DNS string
 	revdns, err := exp.GetSection().ToReverseDNSString()
