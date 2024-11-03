@@ -48,7 +48,7 @@ func get_interfaceName() error {
 	return nil
 }
 
-func loadAndSaveNamedConf(ipv6Prefix string) error {
+func loadAndSaveNamedConf(ipv6Prefix net.IP) error {
 	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64) // todo make use prefix len
 	fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
 
@@ -69,7 +69,7 @@ func loadAndSaveNamedConf(ipv6Prefix string) error {
 	return nil
 }
 
-func loadAndSaveDnsmasqConf(ipv6Prefix string) error {
+func loadAndSaveDnsmasqConf(ipv6Prefix net.IP) error {
 
 	fmt.Println("loading dnsmasq")
 
@@ -80,12 +80,8 @@ func loadAndSaveDnsmasqConf(ipv6Prefix string) error {
 
 	// Replace '#@ipv6_prefix@#::@' with the obtained prefix
 	// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
-	base, err := get_prefix(interfaceName, 0)
-	if err != nil {
-
-	}
-	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64) // todo make use prefix len
-	replacedContent := replace_vars(&content, &base, &reverseDNS)
+	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
+	replacedContent := replace_vars(&content, &ipv6Prefix, &reverseDNS)
 
 	err = os.WriteFile(dnsmasq, []byte(replacedContent), 0644)
 	if err != nil {
@@ -165,7 +161,7 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 			continue
 		}
 		// Call get_prefix function with interfaceName and vlan
-		replacement, err := get_prefix(interfaceName, vlan)
+		replacement, _, err := get_prefix(interfaceName, vlan)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -207,14 +203,14 @@ func main() {
 		}
 
 		// Get the current IPv6 prefix
-		currentIPv6Prefix, err := getCurrentIPv6Prefix(interfaceName)
+		currentIPv6Prefix_str, currentIPv6Prefix, err := get_prefix(interfaceName, 0)
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
 		}
 
 		// If the current prefix is different from the last one, update the zone files and reload services
-		if currentIPv6Prefix != lastIPv6Prefix {
+		if currentIPv6Prefix_str != lastIPv6Prefix {
 			fmt.Print("\n\n\n\n")
 			fmt.Println(strings.Repeat("=", 50))
 			fmt.Println(strings.Repeat("=", 50))
@@ -247,7 +243,7 @@ func main() {
 				return
 			}
 
-			lastIPv6Prefix = currentIPv6Prefix
+			lastIPv6Prefix = currentIPv6Prefix_str
 			fmt.Printf("Zone files updated successfully.\n\n")
 
 
@@ -294,9 +290,10 @@ func get_ut() (string) {
 	return ut
 }
 
-func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
+func replace_vars(content *[]byte, prefix *net.IP, rev_dns *string) (string) {
+	pref_str := prefix.String()
 	replacedContent := replaceIPv6Prefix(string(*content), interfaceName)
-	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#::@", *prefix)
+	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#::@", pref_str)
 	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
 	replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", *rev_dns)
 
@@ -305,7 +302,7 @@ func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
 
 // Function to load files from zones.master directory, replace '#@ipv6_prefix@#::@' with the obtained prefix,
 // and save them to the zones directory
-func loadAndSaveZoneFiles(ipv6Prefix string) error {
+func loadAndSaveZoneFiles(ipv6Prefix net.IP) error {
 	// // Open the zones.master directory
 	// files, err := ioutil.ReadDir(zonesMasterDir)
 	// if err != nil {
@@ -341,12 +338,8 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 		// Replace '#@ipv6_prefix@#::@' with the obtained prefix
 		// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
-		base, err := get_prefix(interfaceName, 0)
-		if err != nil {
-
-		}
-		reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64) // todo make use prefix len
-		replacedContent := replace_vars(&content, &base, &reverseDNS)
+		reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
+		replacedContent := replace_vars(&content, &ipv6Prefix, &reverseDNS)
 
 		// Save the modified content to the zones directory with the same filename
 		outputFile := filepath.Join(zonesDir, file.Name())
@@ -378,20 +371,21 @@ func loadAndSaveZoneFiles(ipv6Prefix string) error {
 
 
 // Function to get the current IPv6 prefix
-func get_prefix(interfaceName string, vlan uint64) (string, error) {
+func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 	// Specify the network interface name
 	// interfaceName := "eth0" // Change this to your desired interface name
 
+	var netip net.IP
 	// Get network interface
 	iface, err := net.InterfaceByName(interfaceName)
 	if err != nil {
-		return "", err
+		return "", netip, err
 	}
 
 	// Get addresses for the interface
 	addrs, err := iface.Addrs()
 	if err != nil {
-		return "", err
+		return "", netip, err
 	}
 
 	// Initialize variables to store the IPv6 prefix
@@ -429,10 +423,10 @@ func get_prefix(interfaceName string, vlan uint64) (string, error) {
 
 	// If no IPv6 prefix found, return an error
 	if ipv6PrefixStr == "" {
-		return "", fmt.Errorf("no IPv6 prefix found")
+		return "", netip, fmt.Errorf("no IPv6 prefix found")
 	}
 
-	return ipv6PrefixStr, nil
+	return ipv6PrefixStr, ipv6Prefix, nil
 }
 
 // // Convert IPv6 address to a big integer
@@ -563,13 +557,31 @@ func get_prefix_padded(ipnet *net.IPNet, vlan uint64) string {
 }
 
 
-func IPv6PrefixToReverseDNS(prefix string, prefLen int) string {
-	exp := ipaddr.NewIPAddressString(prefix + ":").GetAddress()
-	if exp != nil {
-		exp = exp.AdjustPrefixLen(ipaddr.BitCount(uint32(prefLen)))
+func ConvertIPToIPNet(ip net.IP, prefixLength int) *net.IPNet {
+	// Determine the appropriate mask for the IP address (IPv4 or IPv6).
+	var mask net.IPMask
+	if ip.To4() != nil {
+		mask = net.CIDRMask(prefixLength, 32)
 	} else {
+		mask = net.CIDRMask(prefixLength, 128)
+	}
+
+	return &net.IPNet{
+		IP:   ip,
+		Mask: mask,
+	}
+}
+
+func IPv6PrefixToReverseDNS(prefix net.IP, prefLen int, vlan uint64) string {
+	// exp := ipaddr.NewIPAddressString(prefix + ":").GetAddress()
+	exp, err := ipaddr.NewIPAddressFromNetIP(prefix)
+	if err != nil {
 		return ""
 	}
+
+	// exp := ConvertIPToIPNet(prefix, prefix_len)
+	// exp := get_prefix_padded(tmp, vlan)
+	// exp = exp.AdjustPrefixLen(ipaddr.BitCount(uint32(prefLen)))
 
 	// Get the reverse DNS string
 	revdns, err := exp.GetSection().ToReverseDNSString()
