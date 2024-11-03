@@ -567,6 +567,8 @@ func IPv6PrefixToReverseDNS(prefix string, prefLen int) string {
 	exp := ipaddr.NewIPAddressString(prefix + ":").GetAddress()
 	if exp != nil {
 		exp = exp.AdjustPrefixLen(ipaddr.BitCount(uint32(prefLen)))
+	} else {
+		return ""
 	}
 
 	// Get the reverse DNS string
