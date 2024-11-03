@@ -49,7 +49,7 @@ func get_interfaceName() error {
 }
 
 func loadAndSaveNamedConf(ipv6Prefix net.IP) error {
-	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64) // todo make use prefix len
+	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
 	fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
 
 
