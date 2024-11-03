@@ -69,7 +69,7 @@ func loadAndSaveNamedConf(ipv6Prefix net.IP) error {
 	return nil
 }
 
-func loadAndSaveDnsmasqConf(ipv6Prefix net.IP) error {
+func loadAndSaveDnsmasqConf(ipv6Prefix net.IP, ipv6PrefixStr string) error {
 
 	fmt.Println("loading dnsmasq")
 
@@ -81,7 +81,7 @@ func loadAndSaveDnsmasqConf(ipv6Prefix net.IP) error {
 	// Replace '#@ipv6_prefix@#::@' with the obtained prefix
 	// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
 	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-	replacedContent := replace_vars(&content, &ipv6Prefix, &reverseDNS)
+	replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
 
 	err = os.WriteFile(dnsmasq, []byte(replacedContent), 0644)
 	if err != nil {
@@ -218,7 +218,7 @@ func main() {
 			fmt.Printf("prefix: %v\n", currentIPv6Prefix)
 
 
-			err := loadAndSaveZoneFiles(currentIPv6Prefix)
+			err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
 			if err != nil {
 				fmt.Println("Error:", err)
 				return
@@ -229,7 +229,7 @@ func main() {
 				return
 			}
 
-			err = loadAndSaveDnsmasqConf(currentIPv6Prefix)
+			err = loadAndSaveDnsmasqConf(currentIPv6Prefix, currentIPv6Prefix_str)
 			if err != nil {
 				fmt.Println("Error:", err)
 				return
@@ -288,10 +288,9 @@ func get_ut() (string) {
 	return ut
 }
 
-func replace_vars(content *[]byte, prefix *net.IP, rev_dns *string) (string) {
-	pref_str := prefix.String()
+func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
 	replacedContent := replaceIPv6Prefix(string(*content), interfaceName)
-	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#::@", pref_str)
+	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#::@", *prefix)
 	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
 	replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", *rev_dns)
 
@@ -300,7 +299,7 @@ func replace_vars(content *[]byte, prefix *net.IP, rev_dns *string) (string) {
 
 // Function to load files from zones.master directory, replace '#@ipv6_prefix@#::@' with the obtained prefix,
 // and save them to the zones directory
-func loadAndSaveZoneFiles(ipv6Prefix net.IP) error {
+func loadAndSaveZoneFiles(ipv6Prefix net.IP, ipv6PrefixStr string) error {
 	// // Open the zones.master directory
 	// files, err := ioutil.ReadDir(zonesMasterDir)
 	// if err != nil {
@@ -337,7 +336,7 @@ func loadAndSaveZoneFiles(ipv6Prefix net.IP) error {
 		// Replace '#@ipv6_prefix@#::@' with the obtained prefix
 		// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
 		reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-		replacedContent := replace_vars(&content, &ipv6Prefix, &reverseDNS)
+		replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
 
 		// Save the modified content to the zones directory with the same filename
 		outputFile := filepath.Join(zonesDir, file.Name())
