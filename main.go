@@ -258,7 +258,8 @@ func main() {
 		fmt.Printf("Files: %v\n", config.Files)
 		fmt.Printf("Restart Commands: %v\n", config.RestartCmds)
 		fmt.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
-		fmt.Printf("Restart Time Host: %d\n\n", config.RestartTimeHost)
+		fmt.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
+		fmt.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
 	}
 
 	// Start an infinite loop
@@ -314,7 +315,7 @@ func main() {
 			// }
 
 			for _, config := range configs {
-				repSaveFile(config, currentIPv6Prefix_str, currentIPv6Prefix)
+				err := repSaveFile(config, currentIPv6Prefix_str, currentIPv6Prefix)
 				if err != nil {
 					fmt.Println("Error:", err)
 					// return
@@ -455,6 +456,10 @@ func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
 // }
 
 func restart_services(config Config) {
+
+	// if config.RestartTimeout == nil {
+	// 	config.RestartTimeout = 10 * time.Second
+	// }
 
 	dev_name := ""
 	wait_time := 0.0
