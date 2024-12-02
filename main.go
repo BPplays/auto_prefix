@@ -379,6 +379,9 @@ func get_dns_ut() (string) {
 }
 
 func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
+	if prefix == nil {
+		log.Fatal("prefix is nil")
+	}
 	fmt.Println("rep vars")
 	replacedContent := replaceIPv6Prefix(string(*content), interfaceName)
 	fmt.Println("repped vars dyn vlan")
