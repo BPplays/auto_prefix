@@ -383,11 +383,11 @@ func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
 	replacedContent := replaceIPv6Prefix(string(*content), interfaceName)
 	fmt.Println("repped vars dyn vlan")
 
-	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#", *prefix)
+	replacedContent = strings.ReplaceAll(replacedContent, "#@ipv6_prefix@#", *prefix)
 	fmt.Println("repped vars main")
-	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
+	replacedContent = strings.ReplaceAll(replacedContent, "#@ut_10@#", ut)
 	fmt.Println("repped vars ut10")
-	replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", *rev_dns)
+	replacedContent = strings.ReplaceAll(replacedContent, "@::#@ipv6_revdns_prefix@#", *rev_dns)
 	fmt.Println("repped vars reverse")
 
 	return replacedContent
