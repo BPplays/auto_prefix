@@ -164,6 +164,7 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 	// Define the regular expression pattern
 	pattern := `#@ipv6_prefix_([0-9a-fA-F]+)@#`
 	re := regexp.MustCompile(pattern)
+	fmt.Println("starting regex conv")
 
 	// Find all matches in the content
 	matches := re.FindAllStringSubmatch(content, -1)
@@ -378,6 +379,7 @@ func get_dns_ut() (string) {
 }
 
 func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
+	fmt.Println("rep vars")
 	replacedContent := replaceIPv6Prefix(string(*content), interfaceName)
 
 	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#", *prefix)
