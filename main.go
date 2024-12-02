@@ -457,9 +457,9 @@ func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
 
 func restart_services(config Config) {
 
-	// if config.RestartTimeout == nil {
-	// 	config.RestartTimeout = 10 * time.Second
-	// }
+	if config.RestartTimeout <= 0 {
+		config.RestartTimeout = 10
+	}
 
 	dev_name := ""
 	wait_time := 0.0
