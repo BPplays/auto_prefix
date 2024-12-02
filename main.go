@@ -380,9 +380,6 @@ func get_dns_ut() (string) {
 func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
 	replacedContent := replaceIPv6Prefix(string(*content), interfaceName)
 
-	prefixcolcol := (*prefix) + "::"
-
-	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#::@", prefixcolcol)
 	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#", *prefix)
 	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
 	replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", *rev_dns)
