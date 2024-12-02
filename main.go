@@ -8,7 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"os/exec"
+	// "os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -387,55 +387,55 @@ func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
 
 // Function to load files from zones.master directory, replace '#@ipv6_prefix@#::@' with the obtained prefix,
 // and save them to the zones directory
-func loadAndSaveZoneFiles(ipv6Prefix net.IP, ipv6PrefixStr string) error {
-	// // Open the zones.master directory
-	// files, err := ioutil.ReadDir(zonesMasterDir)
-	// if err != nil {
-	//     return err
-	// }
-
-	entries, err := os.ReadDir(zonesMasterDir)
-	if err != nil {
-		return err
-	}
-	files := make([]fs.FileInfo, 0, len(entries))
-	for _, entry := range entries {
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		files = append(files, info)
-	}
-
-	// Iterate over files in the zones.master directory
-	for _, file := range files {
-		// Skip directories
-		if file.IsDir() {
-			continue
-		}
-
-		// Read the contents of the file
-		filePath := filepath.Join(zonesMasterDir, file.Name())
-		content, err := os.ReadFile(filePath)
-		if err != nil {
-			return err
-		}
-
-		// Replace '#@ipv6_prefix@#::@' with the obtained prefix
-		// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
-		reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-		replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
-
-		// Save the modified content to the zones directory with the same filename
-		outputFile := filepath.Join(zonesDir, file.Name())
-		err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
+// func loadAndSaveZoneFiles(ipv6Prefix net.IP, ipv6PrefixStr string) error {
+// 	// // Open the zones.master directory
+// 	// files, err := ioutil.ReadDir(zonesMasterDir)
+// 	// if err != nil {
+// 	//     return err
+// 	// }
+//
+// 	entries, err := os.ReadDir(zonesMasterDir)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	files := make([]fs.FileInfo, 0, len(entries))
+// 	for _, entry := range entries {
+// 		info, err := entry.Info()
+// 		if err != nil {
+// 			return err
+// 		}
+// 		files = append(files, info)
+// 	}
+//
+// 	// Iterate over files in the zones.master directory
+// 	for _, file := range files {
+// 		// Skip directories
+// 		if file.IsDir() {
+// 			continue
+// 		}
+//
+// 		// Read the contents of the file
+// 		filePath := filepath.Join(zonesMasterDir, file.Name())
+// 		content, err := os.ReadFile(filePath)
+// 		if err != nil {
+// 			return err
+// 		}
+//
+// 		// Replace '#@ipv6_prefix@#::@' with the obtained prefix
+// 		// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
+// 		reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
+// 		replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
+//
+// 		// Save the modified content to the zones directory with the same filename
+// 		outputFile := filepath.Join(zonesDir, file.Name())
+// 		err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
+// 		if err != nil {
+// 			return err
+// 		}
+// 	}
+//
+// 	return nil
+// }
 
 // // Function to reload bind9.service and named.service
 // func reloadServices() error {
