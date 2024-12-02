@@ -1,4 +1,4 @@
-module github.com/BPplays/bind9_dyn_prefix
+module github.com/BPplays/auto_prefix
 
 go 1.22.0
 
