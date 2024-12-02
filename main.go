@@ -16,16 +16,20 @@ import (
 	"time"
 
 	"github.com/seancfoley/ipaddress-go/ipaddr"
+	"gopkg.in/yaml.v3"
+	"github.com/coreos/go-systemd/v22/dbus"
+	"context"
 )
 
 const (
-	zonesMasterDir = "/etc/bind/zones.master/"
-	zonesDir       = "/etc/bind/zones/"
-	named_master = "/etc/bind/named.conf.master"
-	named = "/etc/bind/named.conf"
-	dnsmasq_master = "/etc/dnsmasq.conf.master"
-	dnsmasq = "/etc/dnsmasq.conf"
-	configFile     = "/etc/bind/.ipv6_prefix"
+	// zonesMasterDir = "/etc/bind/zones.master/"
+	// zonesDir       = "/etc/bind/zones/"
+	// named_master = "/etc/bind/named.conf.master"
+	// named = "/etc/bind/named.conf"
+	// dnsmasq_master = "/etc/dnsmasq.conf.master"
+	// dnsmasq = "/etc/dnsmasq.conf"
+	// configFile     = "/etc/bind/.ipv6_prefix"
+	configDir = "/etc/auto_prefix/config.d"
 	prefix_len = 60
 	prefix_full_subnet_len = 64
 	if_file = "/etc/main_interface"
@@ -35,6 +39,20 @@ const (
 
 var interfaceName = ""
 var ut string = ""
+
+type FileMapping struct {
+	From string `yaml:"from"`
+	To   string `yaml:"to"`
+}
+
+type Config struct {
+	Name                 string        `yaml:"name"`
+	Files                []FileMapping `yaml:"files"`
+	Folders              []FileMapping `yaml:"folders"`
+	RestartCmds          []string      `yaml:"restart_cmds"`
+	RestartSystemdServices []string    `yaml:"restart_systemd_services"`
+	RestartTimeHost      int           `yaml:"restart_time_host"`
+}
 
 
 func get_interfaceName() error {
@@ -48,50 +66,50 @@ func get_interfaceName() error {
 	return nil
 }
 
-func loadAndSaveNamedConf(ipv6Prefix net.IP) error {
-	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-	fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
-
-
-
-	content, err := os.ReadFile(named_master)
-	if err != nil {
-		return err
-	}
-
-	replacedContent := strings.ReplaceAll(string(content), "@::#@ipv6_revdns_prefix@#", reverseDNS)
-
-	err = os.WriteFile(named, []byte(replacedContent), 0644)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func loadAndSaveDnsmasqConf(ipv6Prefix net.IP, ipv6PrefixStr string) error {
-
-	fmt.Println("loading dnsmasq")
-
-	content, err := os.ReadFile(dnsmasq_master)
-	if err != nil {
-		return err
-	}
-
-	// Replace '#@ipv6_prefix@#::@' with the obtained prefix
-	// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
-	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-	replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
-
-	err = os.WriteFile(dnsmasq, []byte(replacedContent), 0644)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("saving dnsmasq")
-
-	return nil
-}
+// func loadAndSaveNamedConf(ipv6Prefix net.IP) error {
+// 	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
+// 	fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
+//
+//
+//
+// 	content, err := os.ReadFile(named_master)
+// 	if err != nil {
+// 		return err
+// 	}
+//
+// 	replacedContent := strings.ReplaceAll(string(content), "@::#@ipv6_revdns_prefix@#", reverseDNS)
+//
+// 	err = os.WriteFile(named, []byte(replacedContent), 0644)
+// 	if err != nil {
+// 		return err
+// 	}
+//
+// 	return nil
+// }
+//
+// func loadAndSaveDnsmasqConf(ipv6Prefix net.IP, ipv6PrefixStr string) error {
+//
+// 	fmt.Println("loading dnsmasq")
+//
+// 	content, err := os.ReadFile(dnsmasq_master)
+// 	if err != nil {
+// 		return err
+// 	}
+//
+// 	// Replace '#@ipv6_prefix@#::@' with the obtained prefix
+// 	// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
+// 	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
+// 	replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
+//
+// 	err = os.WriteFile(dnsmasq, []byte(replacedContent), 0644)
+// 	if err != nil {
+// 		return err
+// 	}
+//
+// 	fmt.Println("saving dnsmasq")
+//
+// 	return nil
+// }
 
 // SetBit sets or clears a specific bit in the IP address based on the value of setToOne.
 func SetBit(ip_bytes []byte, bit int, setToOne bool) net.IP {
@@ -169,6 +187,49 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 	return content
 }
 
+// loadConfigs loads and parses all YAML files from a directory
+func loadConfigs(dir string) ([]Config, error) {
+	var configs []Config
+
+	// Walk through the directory
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return fmt.Errorf("error walking directory: %w", err)
+		}
+
+		// Only process regular files with .yaml or .yml extensions
+		if !d.IsDir() && (filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml") {
+			fileConfigs, err := parseConfigFile(path)
+			if err != nil {
+				log.Printf("Error parsing file %s: %v", path, err)
+				return nil // Skip invalid files but continue processing others
+			}
+			configs = append(configs, fileConfigs...)
+		}
+		return nil
+	})
+
+	return configs, err
+}
+
+// parseConfigFile parses a single YAML file into a slice of Config objects
+func parseConfigFile(filePath string) ([]Config, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("error opening file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	var configs []Config
+	decoder := yaml.NewDecoder(file)
+	if err := decoder.Decode(&configs); err != nil {
+		return nil, fmt.Errorf("error decoding YAML file %s: %w", filePath, err)
+	}
+
+	return configs, nil
+}
+
+
 func main() {
 	var lastIPv6Prefix string = ""
 
@@ -180,6 +241,22 @@ func main() {
 	fmt.Println("starting program")
 	get_interfaceName()
 	fmt.Println("using if:", interfaceName)
+
+
+	// Load all configs from the directory
+	configs, err := loadConfigs(configDir)
+	if err != nil {
+		log.Fatalf("Error loading configs: %v", err)
+	}
+
+	// Print the parsed configurations
+	for _, config := range configs {
+		fmt.Printf("Name: %s\n", config.Name)
+		fmt.Printf("Files: %v\n", config.Files)
+		fmt.Printf("Restart Commands: %v\n", config.RestartCmds)
+		fmt.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
+		fmt.Printf("Restart Time Host: %d\n\n", config.RestartTimeHost)
+	}
 
 	// Start an infinite loop
 	for {
@@ -196,9 +273,7 @@ func main() {
 		time.Sleep(sleep_dur)
 
 
-		if ut != get_ut() {
-			ut = get_ut()
-		}
+		ut = get_dns_ut()
 
 		// Get the current IPv6 prefix
 		currentIPv6Prefix_str, currentIPv6Prefix, err := get_prefix(interfaceName, 0)
@@ -218,23 +293,30 @@ func main() {
 			fmt.Printf("prefix: %v\n", currentIPv6Prefix)
 
 
-			err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
-			if err != nil {
-				fmt.Println("Error:", err)
-				return
-			}
-			err = loadAndSaveNamedConf(currentIPv6Prefix)
-			if err != nil {
-				fmt.Println("Error:", err)
-				return
-			}
+			// err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
+			// if err != nil {
+			// 	fmt.Println("Error:", err)
+			// 	return
+			// }
+			// err = loadAndSaveNamedConf(currentIPv6Prefix)
+			// if err != nil {
+			// 	fmt.Println("Error:", err)
+			// 	return
+			// }
+			//
+			// err = loadAndSaveDnsmasqConf(currentIPv6Prefix, currentIPv6Prefix_str)
+			// if err != nil {
+			// 	fmt.Println("Error:", err)
+			// 	return
+			// }
 
-			err = loadAndSaveDnsmasqConf(currentIPv6Prefix, currentIPv6Prefix_str)
-			if err != nil {
-				fmt.Println("Error:", err)
-				return
+			for _, config := range configs {
+				repSaveFile(config, currentIPv6Prefix_str, currentIPv6Prefix)
+				if err != nil {
+					fmt.Println("Error:", err)
+					// return
+				}
 			}
-
 			err = restart_dns()
 			if err != nil {
 				fmt.Println("Error:", err)
@@ -254,7 +336,7 @@ func main() {
 	}
 }
 
-func get_date8() (string) {
+func get_dns_date8() (string) {
 	// Get the current date
 	currentDate := time.Now()
 
@@ -272,7 +354,7 @@ func get_date8() (string) {
 }
 
 
-func get_ut() (string) {
+func get_dns_ut() (string) {
 	// Get the current date
 	currentDate := time.Now()
 
@@ -366,6 +448,134 @@ func loadAndSaveZoneFiles(ipv6Prefix net.IP, ipv6PrefixStr string) error {
 //     return nil
 // }
 
+func restart_services(config Config) {
+	// What service are we looking at?
+	targetSystemdUnit := "fakemill.service"
+
+	ctx := context.Background()
+	// Connect to systemd
+	// Specifically this will look DBUS_SYSTEM_BUS_ADDRESS environment variable
+	// For example: `unix:path=/run/dbus/system_bus_socket`
+	systemdConnection, err := dbus.NewSystemConnectionContext(ctx)
+	if err != nil {
+		fmt.Printf("Failed to connect to systemd: %v\n", err)
+		panic(err)
+	}
+	defer systemdConnection.Close()
+
+	listOfUnits, err := systemdConnection.ListUnitsContext(ctx)
+	if err != nil {
+		fmt.Printf("Failed to list units: %v\n", err)
+		return exitCodeFailedToListUnits
+	}
+
+	found := false
+	targetUnit := dbus.UnitStatus{}
+	for _, unit := range listOfUnits {
+		if unit.Name == targetSystemdUnit {
+			fmt.Printf("Found systemd unit %s\n", targetSystemdUnit)
+			found = true
+			targetUnit = unit
+			break
+		}
+	}
+	if !found {
+		fmt.Printf("Expected systemd unit %s not found\n", targetSystemdUnit)
+		return 1
+	}
+	completedRestartCh := make(chan string)
+	jobID, err := systemdConnection.RestartUnitContext(
+		ctx,
+		targetSystemdUnit,
+		restartMode,
+		completedRestartCh,
+	)
+
+	if err != nil {
+		fmt.Printf("Failed to restart unit: %v\n", err)
+		panic(err)
+	}
+	fmt.Printf("Restart job id: %d\n", jobID)
+
+	// Wait for the restart to complete
+	select {
+	case <-completedRestartCh:
+		fmt.Printf("Restart job completed for unit: %s\n", targetSystemdUnit)
+	case <-time.After(30 * time.Second):
+		fmt.Printf("Timed out waiting for restart job to complete for unit: %s\n", targetSystemdUnit)
+	}
+}
+
+func repSaveFile(config Config, ipv6PrefixStr string, ipv6Prefix net.IP) (error) {
+
+	for _, folder := range config.Folders {
+
+		entries, err := os.ReadDir(folder.From)
+		if err != nil {
+			return err
+		}
+		files := make([]fs.FileInfo, 0, len(entries))
+		for _, entry := range entries {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			files = append(files, info)
+		}
+
+		// Iterate over files in the zones.master directory
+		for _, file := range files {
+			// Skip directories
+			if file.IsDir() {
+				continue
+			}
+
+			// Read the contents of the file
+			filePath := filepath.Join(folder.From, file.Name())
+			content, err := os.ReadFile(filePath)
+			if err != nil {
+				return err
+			}
+
+			// Replace '#@ipv6_prefix@#::@' with the obtained prefix
+			// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
+			reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
+			replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
+
+			// Save the modified content to the zones directory with the same filename
+			outputFile := filepath.Join(folder.To, file.Name())
+			err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	for _, file := range config.Files {
+		fmt.Printf("reading: %v\n", file.From)
+		content, err := os.ReadFile(file.From)
+		if err != nil {
+			return err
+		}
+
+		// Replace '#@ipv6_prefix@#::@' with the obtained prefix
+		// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
+		reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
+		replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
+
+		err = os.WriteFile(file.To, []byte(replacedContent), 0644)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("saving: %v\n", file.To)
+
+		return nil
+
+	}
+
+	return nil
+}
 
 // Function to get the current IPv6 prefix
 func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
@@ -809,12 +1019,3 @@ func getIPv6Prefix(ipnet *net.IPNet) string {
 
 	return ipv6Prefix
 }
-
-
-
-
-
-
-
-
-
