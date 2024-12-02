@@ -586,7 +586,7 @@ func repSaveFile(config Config, ipv6PrefixStr string, ipv6Prefix net.IP) (error)
 			// Replace '#@ipv6_prefix@#::@' with the obtained prefix
 			// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
 			reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-			fmt.Printf("repping: %v, file: %v", config.Name, file)
+			fmt.Printf("repping: %v, file: %v", config.Name, file.Name())
 			replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
 
 			// Save the modified content to the zones directory with the same filename
