@@ -162,7 +162,7 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 
 func replaceIPv6Prefix(content, interfaceName string) string {
 	// Define the regular expression pattern
-	pattern := `#@ipv6_prefix@#([0-9a-fA-F]+)::@`
+	pattern := `#@ipv6_prefix@@([0-9a-fA-F]+)@#`
 	re := regexp.MustCompile(pattern)
 
 	// Find all matches in the content
@@ -379,7 +379,11 @@ func get_dns_ut() (string) {
 
 func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
 	replacedContent := replaceIPv6Prefix(string(*content), interfaceName)
-	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#::@", *prefix)
+
+	prefixcolcol := (*prefix) + "::"
+
+	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#::@", prefixcolcol)
+	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ipv6_prefix@#", *prefix)
 	replacedContent = strings.ReplaceAll(string(replacedContent), "#@ut_10@#", ut)
 	replacedContent = strings.ReplaceAll(string(replacedContent), "@::#@ipv6_revdns_prefix@#", *rev_dns)
 
@@ -664,10 +668,13 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 
 	ipv6PrefixStr = ipv6Prefix.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
 
-	if strings.HasSuffix(ipv6PrefixStr, "::") {
-		ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, "::") + ":"
-	}
+	// if strings.HasSuffix(ipv6PrefixStr, "::") {
+	// 	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, "::") + ":"
+	// }
 
+	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, "::")
+	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, ":")
+	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, ":")
 	fmt.Println("ipv6Prefix:", ipv6PrefixStr)
 
 	// If no IPv6 prefix found, return an error
