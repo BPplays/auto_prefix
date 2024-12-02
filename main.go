@@ -32,9 +32,11 @@ const (
 	configDir = "/etc/auto_prefix/config.d"
 	prefix_len = 60
 	prefix_full_subnet_len = 64
+	restartMode       = "replace" // or "force-reload"
 	if_file = "/etc/main_interface"
 	// interfaceName = "ens33"
 	checkInterval  = 5 * time.Second
+
 )
 
 var interfaceName = ""
@@ -52,6 +54,7 @@ type Config struct {
 	RestartCmds          []string      `yaml:"restart_cmds"`
 	RestartSystemdServices []string    `yaml:"restart_systemd_services"`
 	RestartTimeHost      int           `yaml:"restart_time_host"`
+	RestartTimeout      int           `yaml:"restart_timeout"`
 }
 
 
@@ -316,15 +319,18 @@ func main() {
 					fmt.Println("Error:", err)
 					// return
 				}
-			}
-			err = restart_dns()
-			if err != nil {
-				fmt.Println("Error:", err)
-				return
+
+				restart_services(config)
 			}
 
+			// err = restart_dns()
+			// if err != nil {
+			// 	fmt.Println("Error:", err)
+			// 	return
+			// }
+
 			lastIPv6Prefix = currentIPv6Prefix_str
-			fmt.Printf("Zone files updated successfully.\n\n")
+			fmt.Printf("Files updated successfully.\n\n")
 
 
 			fmt.Println(strings.Repeat("=", 50))
@@ -449,60 +455,92 @@ func loadAndSaveZoneFiles(ipv6Prefix net.IP, ipv6PrefixStr string) error {
 // }
 
 func restart_services(config Config) {
-	// What service are we looking at?
-	targetSystemdUnit := "fakemill.service"
 
-	ctx := context.Background()
-	// Connect to systemd
-	// Specifically this will look DBUS_SYSTEM_BUS_ADDRESS environment variable
-	// For example: `unix:path=/run/dbus/system_bus_socket`
-	systemdConnection, err := dbus.NewSystemConnectionContext(ctx)
+	dev_name := ""
+	wait_time := 0.0
+	wait_time_mul := 5.0
+	wait_time_def := rand.Float64() * 15
+
+	hostname, err := os.Hostname()
 	if err != nil {
-		fmt.Printf("Failed to connect to systemd: %v\n", err)
-		panic(err)
-	}
-	defer systemdConnection.Close()
+		fmt.Println("cant get hostname. Error:", err)
+		wait_time = wait_time_def
+	} else {
+		spl := strings.Split(hostname, ".")
+		dev_name = spl[0]
 
-	listOfUnits, err := systemdConnection.ListUnitsContext(ctx)
-	if err != nil {
-		fmt.Printf("Failed to list units: %v\n", err)
-		return exitCodeFailedToListUnits
-	}
+		numericStr := ""
+		for _, char := range dev_name {
+			if (char >= '0' && char <= '9') || char == '.' {
+				numericStr += string(char)
+			}
+		}
 
-	found := false
-	targetUnit := dbus.UnitStatus{}
-	for _, unit := range listOfUnits {
-		if unit.Name == targetSystemdUnit {
-			fmt.Printf("Found systemd unit %s\n", targetSystemdUnit)
-			found = true
-			targetUnit = unit
-			break
+		// Convert string to float64
+		num, err := strconv.ParseFloat(numericStr, 64)
+		if err != nil {
+			fmt.Println("Error converting string to float64:", err)
+			wait_time = wait_time_def
+		} else {
+			wait_time = (num-1) * wait_time_mul
 		}
 	}
-	if !found {
-		fmt.Printf("Expected systemd unit %s not found\n", targetSystemdUnit)
-		return 1
-	}
-	completedRestartCh := make(chan string)
-	jobID, err := systemdConnection.RestartUnitContext(
-		ctx,
-		targetSystemdUnit,
-		restartMode,
-		completedRestartCh,
-	)
 
-	if err != nil {
-		fmt.Printf("Failed to restart unit: %v\n", err)
-		panic(err)
-	}
-	fmt.Printf("Restart job id: %d\n", jobID)
+	time.Sleep(time.Duration(wait_time * float64(time.Second)))
 
-	// Wait for the restart to complete
-	select {
-	case <-completedRestartCh:
-		fmt.Printf("Restart job completed for unit: %s\n", targetSystemdUnit)
-	case <-time.After(30 * time.Second):
-		fmt.Printf("Timed out waiting for restart job to complete for unit: %s\n", targetSystemdUnit)
+	for _, targetSystemdUnit := range config.RestartSystemdServices {
+		ctx := context.Background()
+		// Connect to systemd
+		// Specifically this will look DBUS_SYSTEM_BUS_ADDRESS environment variable
+		// For example: `unix:path=/run/dbus/system_bus_socket`
+		systemdConnection, err := dbus.NewSystemConnectionContext(ctx)
+		if err != nil {
+			fmt.Printf("Failed to connect to systemd: %v\n", err)
+			panic(err)
+		}
+		defer systemdConnection.Close()
+
+		listOfUnits, err := systemdConnection.ListUnitsContext(ctx)
+		if err != nil {
+			fmt.Printf("Failed to list units: %v\n", err)
+		}
+
+		found := false
+		// targetUnit := dbus.UnitStatus{}
+		for _, unit := range listOfUnits {
+			if unit.Name == targetSystemdUnit {
+				fmt.Printf("Found systemd unit %s\n", targetSystemdUnit)
+				found = true
+				// targetUnit = unit
+				break
+			}
+		}
+		if !found {
+			fmt.Printf("Expected systemd unit %s not found\n", targetSystemdUnit)
+		}
+
+		completedRestartCh := make(chan string)
+		jobID, err := systemdConnection.RestartUnitContext(
+			ctx,
+			targetSystemdUnit,
+			restartMode,
+			completedRestartCh,
+		)
+
+		if err != nil {
+			fmt.Printf("Failed to restart unit: %v\n", err)
+			panic(err)
+		}
+		fmt.Printf("Restart job id: %d\n", jobID)
+
+		// Wait for the restart to complete
+		select {
+		case <-completedRestartCh:
+			fmt.Printf("Restart job completed for unit: %s\n", targetSystemdUnit)
+		case <-time.After(time.Duration(config.RestartTimeout) * time.Second):
+			fmt.Printf("Timed out waiting for restart job to complete for unit: %s\n", targetSystemdUnit)
+		}
+
 	}
 }
 
@@ -821,62 +859,62 @@ func IPv6PrefixToReverseDNS(prefix net.IP, prefLen int, vlan uint64) string {
 
 
 
-// Function to reload bind9.service and named.service
-func restart_dns() error {
-	dev_name := ""
-	wait_time := 0.0
-	wait_time_mul := 5.0
-	wait_time_def := rand.Float64() * 15
-
-	hostname, err := os.Hostname()
-	if err != nil {
-		fmt.Println("cant get hostname. Error:", err)
-		wait_time = wait_time_def
-	} else {
-		spl := strings.Split(hostname, ".")
-		dev_name = spl[0]
-
-		numericStr := ""
-		for _, char := range dev_name {
-			if (char >= '0' && char <= '9') || char == '.' {
-				numericStr += string(char)
-			}
-		}
-
-		// Convert string to float64
-		num, err := strconv.ParseFloat(numericStr, 64)
-		if err != nil {
-			fmt.Println("Error converting string to float64:", err)
-			wait_time = wait_time_def
-		} else {
-			wait_time = (num-1) * wait_time_mul
-		}
-	}
-
-	time.Sleep(time.Duration(wait_time * float64(time.Second)))
-
-	// // Reload bind9.service
-	// err = exec.Command("systemctl", "restart", "bind9.service").Run()
-	// if err != nil {
-	//     return err
-	// }
-
-
-	// Reload named.service
-	err = exec.Command("systemctl", "restart", "named.service").Run()
-	if err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println("reloading dnsmasq")
-	// err = exec.Command("systemctl", "reload", "dnsmasq.service").Run()
-	err = exec.Command("systemctl", "restart", "dnsmasq.service").Run()
-	if err != nil {
-		fmt.Println(err)
-	}
-
-
-	return nil
-}
+// // Function to reload bind9.service and named.service
+// func restart_dns() error {
+// 	dev_name := ""
+// 	wait_time := 0.0
+// 	wait_time_mul := 5.0
+// 	wait_time_def := rand.Float64() * 15
+//
+// 	hostname, err := os.Hostname()
+// 	if err != nil {
+// 		fmt.Println("cant get hostname. Error:", err)
+// 		wait_time = wait_time_def
+// 	} else {
+// 		spl := strings.Split(hostname, ".")
+// 		dev_name = spl[0]
+//
+// 		numericStr := ""
+// 		for _, char := range dev_name {
+// 			if (char >= '0' && char <= '9') || char == '.' {
+// 				numericStr += string(char)
+// 			}
+// 		}
+//
+// 		// Convert string to float64
+// 		num, err := strconv.ParseFloat(numericStr, 64)
+// 		if err != nil {
+// 			fmt.Println("Error converting string to float64:", err)
+// 			wait_time = wait_time_def
+// 		} else {
+// 			wait_time = (num-1) * wait_time_mul
+// 		}
+// 	}
+//
+// 	time.Sleep(time.Duration(wait_time * float64(time.Second)))
+//
+// 	// // Reload bind9.service
+// 	// err = exec.Command("systemctl", "restart", "bind9.service").Run()
+// 	// if err != nil {
+// 	//     return err
+// 	// }
+//
+//
+// 	// Reload named.service
+// 	err = exec.Command("systemctl", "restart", "named.service").Run()
+// 	if err != nil {
+// 		fmt.Println(err)
+// 	}
+// 	fmt.Println("reloading dnsmasq")
+// 	// err = exec.Command("systemctl", "reload", "dnsmasq.service").Run()
+// 	err = exec.Command("systemctl", "restart", "dnsmasq.service").Run()
+// 	if err != nil {
+// 		fmt.Println(err)
+// 	}
+//
+//
+// 	return nil
+// }
 
 
 
