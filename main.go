@@ -53,7 +53,7 @@ type Config struct {
 	Folders              []FileMapping `yaml:"folders"`
 	RestartCmds          []string      `yaml:"restart_cmds"`
 	RestartSystemdServices []string    `yaml:"restart_systemd_services"`
-	RestartTimeHost      int           `yaml:"restart_time_host"`
+	RestartTimeHost      float64           `yaml:"restart_time_host"`
 	RestartTimeout      int           `yaml:"restart_timeout"`
 }
 
@@ -458,7 +458,7 @@ func restart_services(config Config) {
 
 	dev_name := ""
 	wait_time := 0.0
-	wait_time_mul := 5.0
+	wait_time_mul := config.RestartTimeHost
 	wait_time_def := rand.Float64() * 15
 
 	hostname, err := os.Hostname()
