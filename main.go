@@ -162,7 +162,7 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 
 func replaceIPv6Prefix(content, interfaceName string) string {
 	// Define the regular expression pattern
-	pattern := `#@ipv6_prefix@@([0-9a-fA-F]+)@#`
+	pattern := `#@ipv6_prefix_([0-9a-fA-F]+)@#`
 	re := regexp.MustCompile(pattern)
 
 	// Find all matches in the content
