@@ -586,6 +586,7 @@ func repSaveFile(config Config, ipv6PrefixStr string, ipv6Prefix net.IP) (error)
 
 			// Read the contents of the file
 			filePath := filepath.Join(folder.From, file.Name())
+			fmt.Printf("reading: %v\n", filePath)
 			content, err := os.ReadFile(filePath)
 			if err != nil {
 				return err
@@ -599,6 +600,7 @@ func repSaveFile(config Config, ipv6PrefixStr string, ipv6Prefix net.IP) (error)
 
 			// Save the modified content to the zones directory with the same filename
 			outputFile := filepath.Join(folder.To, file.Name())
+			fmt.Printf("saving: %v\n", outputFile)
 			err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
 			if err != nil {
 				return err
