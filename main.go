@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"encoding/json"
+	"io/ioutil"
 
 	"github.com/seancfoley/ipaddress-go/ipaddr"
 	"gopkg.in/yaml.v3"
@@ -30,6 +32,7 @@ const (
 	// dnsmasq = "/etc/dnsmasq.conf"
 	// configFile     = "/etc/bind/.ipv6_prefix"
 	configDir = "/etc/auto_prefix/config.d"
+	prefix_store = "/etc/auto_prefix/prefix.json"
 	prefix_len_default = 56
 	prefix_full_subnet_len = 64
 	restartMode       = "replace" // or "force-reload"
@@ -315,6 +318,7 @@ func main() {
 			fmt.Println("Error:", err)
 			return
 		}
+
 
 		// If the current prefix is different from the last one, update the zone files and reload services
 		if currentIPv6Prefix_str != lastIPv6Prefix {
@@ -683,6 +687,7 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 
 	// Initialize variables to store the IPv6 prefix
 	var ipv6Prefix net.IP
+	var found_addr bool = false
 	var ipv6PrefixStr string
 
 	// Iterate over addresses to find the IPv6 prefix
@@ -693,7 +698,7 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 		if err != nil {
 			continue
 		}
-		if isValidIPAddress(ip) {
+		if isValidIPprefixAddress(ip) {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
 				continue
@@ -701,6 +706,7 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 			// (*ipnet).Mask = net.CIDRMask(prefix_len, 128)
 			ipv6Prefix = set_ipaddr_bits(ipnet.IP.Mask(net.CIDRMask(prefix_len, 128)), vlan, prefix_len, prefix_full_subnet_len)
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
+			found_addr = true
 			break
 		}
 	}
@@ -723,6 +729,58 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 
 	return ipv6PrefixStr, ipv6Prefix, nil
 }
+
+type jsonIPv6Prefix struct {
+	net_ip net.IP `json:"net_ip"`
+}
+
+func readIPv6PrefixFromFile() (*net.IP, error) {
+	file, err := os.Open(prefix_store)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // File does not exist, treat as empty
+		}
+		return nil, err
+	}
+	defer file.Close()
+
+	data, err := os.ReadFile(prefix_store)
+	if err != nil {
+		return nil, err
+	}
+
+	var prefix jsonIPv6Prefix
+	if err := json.Unmarshal(data, &prefix); err != nil {
+		return nil, err
+	}
+
+	return &prefix.net_ip, nil
+}
+
+func writeIPv6PrefixToFile(prefix jsonIPv6Prefix) error {
+	data, err := json.MarshalIndent(prefix, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(prefix_store, data, 0644)
+}
+
+func updateIPv6Prefix(newPrefix net.IP) error {
+	storedPrefix, err := readIPv6PrefixFromFile()
+	if err != nil {
+		return err
+	}
+
+	// If no prefix exists or the prefix is different, write new one
+	if storedPrefix == nil || !storedPrefix.Prefix.Equal(newPrefix) {
+		fmt.Println("Updating IPv6 prefix to:", newPrefix.String())
+		return writeIPv6PrefixToFile(jsonIPv6Prefix{net_ip: newPrefix})
+	}
+
+	fmt.Println("IPv6 prefix is unchanged.")
+	return nil
+}
+
 
 // // Convert IPv6 address to a big integer
 // func IPv6ToBigInt(ipv6Addr string) (*big.Int, error) {
@@ -1005,8 +1063,8 @@ func isLinkLocal(ip net.IP) bool {
 	return linkLocal.Contains(ip)
 }
 
-// isValidIPAddress checks if an IP address is not link-local, not ULA, and not loopback.
-func isValidIPAddress(ip net.IP) bool {
+// isValidIPprefixAddress checks if an IP address is not link-local, not ULA, and not loopback.
+func isValidIPprefixAddress(ip net.IP) bool {
 	if ip == nil {
 		return false // Invalid IP address
 	}
@@ -1063,7 +1121,7 @@ func getCurrentIPv6Prefix(interfaceName string) (string, error) {
 		if err != nil {
 			continue
 		}
-		if isValidIPAddress(ip) {
+		if isValidIPprefixAddress(ip) {
 			ipnet, ok := addr.(*net.IPNet)
 			if !ok {
 				continue
