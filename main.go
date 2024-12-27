@@ -54,6 +54,10 @@ type FileMapping struct {
 	To   string `yaml:"to"`
 }
 
+type jsonIPv6Prefix struct {
+	Prefix net.IP `json:"prefix"`
+}
+
 type Config struct {
 	Name                 string        `yaml:"name"`
 	Files                []FileMapping `yaml:"files"`
@@ -711,6 +715,15 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 		}
 	}
 
+	if found_addr {
+		updateIPv6Prefix(ipv6Prefix)
+	} else {
+		ipv6Prefix, err = readIPv6PrefixFromFile()
+		if err != nil {
+			return "", nil, err
+		}
+	}
+
 	ipv6PrefixStr = ipv6Prefix.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
 
 	// if strings.HasSuffix(ipv6PrefixStr, "::") {
@@ -730,11 +743,8 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 	return ipv6PrefixStr, ipv6Prefix, nil
 }
 
-type jsonIPv6Prefix struct {
-	net_ip net.IP `json:"net_ip"`
-}
 
-func readIPv6PrefixFromFile() (*net.IP, error) {
+func readIPv6PrefixFromFile() (net.IP, error) {
 	file, err := os.Open(prefix_store)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -754,7 +764,7 @@ func readIPv6PrefixFromFile() (*net.IP, error) {
 		return nil, err
 	}
 
-	return &prefix.net_ip, nil
+	return prefix.Prefix, nil
 }
 
 func writeIPv6PrefixToFile(prefix jsonIPv6Prefix) error {
@@ -772,9 +782,9 @@ func updateIPv6Prefix(newPrefix net.IP) error {
 	}
 
 	// If no prefix exists or the prefix is different, write new one
-	if storedPrefix == nil || !storedPrefix.Prefix.Equal(newPrefix) {
+	if storedPrefix == nil || !storedPrefix.Equal(newPrefix) {
 		fmt.Println("Updating IPv6 prefix to:", newPrefix.String())
-		return writeIPv6PrefixToFile(jsonIPv6Prefix{net_ip: newPrefix})
+		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix})
 	}
 
 	fmt.Println("IPv6 prefix is unchanged.")
