@@ -30,13 +30,17 @@ const (
 	// dnsmasq = "/etc/dnsmasq.conf"
 	// configFile     = "/etc/bind/.ipv6_prefix"
 	configDir = "/etc/auto_prefix/config.d"
-	prefix_len = 60
+	prefix_len_default = 56
 	prefix_full_subnet_len = 64
 	restartMode       = "replace" // or "force-reload"
 	if_file = "/etc/main_interface"
+	pd_file = "/etc/pd_size"
 	// interfaceName = "ens33"
 	checkInterval  = 5 * time.Second
 
+)
+var (
+	prefix_len = prefix_len_default
 )
 
 var interfaceName = ""
@@ -67,6 +71,22 @@ func get_interfaceName() error {
 	interfaceName = string(content)
 
 	return nil
+}
+
+func get_pd_size() {
+	content, err := os.ReadFile(pd_file)
+	if err != nil {
+		prefix_len = prefix_len_default
+		return
+	}
+
+	prefix_len, err = strconv.Atoi(string(content))
+
+	if err != nil {
+		prefix_len = prefix_len_default
+	}
+
+	return
 }
 
 // func loadAndSaveNamedConf(ipv6Prefix net.IP) error {
@@ -243,7 +263,6 @@ func main() {
 
 
 	fmt.Println("starting program")
-	get_interfaceName()
 	fmt.Println("using if:", interfaceName)
 
 
@@ -265,6 +284,16 @@ func main() {
 
 	// Start an infinite loop
 	for {
+		get_interfaceName()
+		if err != nil {
+			if interfaceName == "" {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+		}
+
+		get_pd_size()
+
 		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
 
 		// if sleep_sec >= checkInterval.Seconds() {
