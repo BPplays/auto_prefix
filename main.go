@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 	"encoding/json"
-	"io/ioutil"
+	// "io/ioutil"
 
 	"github.com/seancfoley/ipaddress-go/ipaddr"
 	"gopkg.in/yaml.v3"
