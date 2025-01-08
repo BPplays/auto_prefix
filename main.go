@@ -716,6 +716,8 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 			}
 			// (*ipnet).Mask = net.CIDRMask(prefix_len, 128)
 			ipv6Prefix = set_ipaddr_bits(ipnet.IP.Mask(net.CIDRMask(prefix_len, 128)), vlan, prefix_len, prefix_full_subnet_len)
+
+			fmt.Println("addr_bytes_1:", sprintBytesAsBinary(ipv6Prefix))
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
 			found_addr = true
 			break
