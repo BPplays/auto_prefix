@@ -155,7 +155,7 @@ func SetBit(ip_bytes []byte, bit int, setToOne bool) net.IP {
 		return nil // Return nil if the IP address is invalid
 	}
 
-	byteIndex := bit / 8  // Calculate the byte position
+	byteIndex := int(math.Ceil(float64(bit) / 8))  // Calculate the byte position
 	bitIndex := bit % 8   // Calculate the bit position within that byte
 
 	if setToOne {
@@ -715,9 +715,8 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 				continue
 			}
 			// (*ipnet).Mask = net.CIDRMask(prefix_len, 128)
-			ipv6Prefix = set_ipaddr_bits(ipnet.IP.Mask(net.CIDRMask(prefix_len+1, 128)), vlan, prefix_len, prefix_full_subnet_len)
+			ipv6Prefix = set_ipaddr_bits(ipnet.IP.Mask(net.CIDRMask(prefix_len, 128)), vlan, prefix_len, prefix_full_subnet_len)
 
-			fmt.Println("addr_bytes_1:", sprintBytesAsBinary(ipv6Prefix))
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
 			found_addr = true
 			break
