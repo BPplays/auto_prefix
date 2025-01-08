@@ -228,7 +228,7 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 			log.Fatalln(err)
 		}
 		repped = strings.ReplaceAll(content, fullMatch, replacement)
-		fmt.Printf("full match: %v, repped: %v", fullMatch, replacement)
+		fmt.Printf("full match: %v, repped: %v\n", fullMatch, replacement)
 	}
 
 	return repped
