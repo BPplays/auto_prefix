@@ -189,9 +189,11 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 		subnet_bit_pos := (-i) + end
 		bit := (int(subnet_uint64) >> subnet_bit_pos) & 1
 		addr_output = SetBit(addr_bytes, i, bit == 1)
+		fmt.Printf("output nonfin: %v\n\n", addr_output.String())
 		// fmt.Printf("Bit %d: %d\n", i, bit)
 	}
 
+	fmt.Printf("output fin: %v\n\n", addr_output.String())
 	return addr_output
 }
 
