@@ -158,6 +158,7 @@ func SetBit(ip_bytes []byte, bit int, setToOne bool) net.IP {
 	byteIndex := int(math.Ceil(float64(bit) / 8))  // Calculate the byte position
 	bitIndex := bit % 8   // Calculate the bit position within that byte
 
+	fmt.Printf("biti %v, bytei %v", bitIndex, byteIndex)
 	if setToOne {
 		ip_bytes[byteIndex] |= 1 << (7 - bitIndex) // Set the bit to 1
 	} else {
