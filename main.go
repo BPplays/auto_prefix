@@ -178,7 +178,7 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 
 	var addr_bytes []byte
 	addr_bytes = addr.To16()
-	fmt.Printf("addr: %v,addr_bytes: %v\n", addr.String(), sprintBytesAsBinary(addr_bytes))
+	fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n", addr.String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
 
 	fmt.Printf("set bits: start: %v, end: %v\n", start, end)
 	for i := end; i >= start; i-- {
