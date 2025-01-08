@@ -178,7 +178,7 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 
 	var addr_bytes []byte
 	addr_bytes = addr.To16()
-	fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n", addr.String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
+	fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n\n\n", addr.String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
 
 	fmt.Printf("set bits: start: %v, end: %v\n", start, end)
 	for i := end; i >= start; i-- {
@@ -716,6 +716,7 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 				continue
 			}
 			// (*ipnet).Mask = net.CIDRMask(prefix_len, 128)
+			fmt.Printf("ipnet: %v\n", ipnet.IP.String())
 			ipv6Prefix = set_ipaddr_bits(ipnet.IP.Mask(net.CIDRMask(prefix_len, 128)), vlan, prefix_len, prefix_full_subnet_len)
 
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
