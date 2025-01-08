@@ -67,6 +67,13 @@ type Config struct {
 	RestartTimeHost      float64           `yaml:"restart_time_host"`
 	RestartTimeout      int           `yaml:"restart_timeout"`
 }
+func sprintBytesAsBinary(data []byte) string {
+	var str strings.Builder
+	for _, b := range data {
+		str.WriteString(fmt.Sprintf("%08b ", b))
+	}
+	return str.String()
+}
 
 
 func get_interfaceName() error {
@@ -170,7 +177,7 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 
 	var addr_bytes []byte
 	addr_bytes = addr.To16()
-	fmt.Println("addr_bytes:", addr_bytes)
+	fmt.Println("addr_bytes:", sprintBytesAsBinary(addr_bytes))
 
 	fmt.Printf("set bits: start: %v, end: %v\n", start, end)
 	for i := end; i >= start; i-- {
