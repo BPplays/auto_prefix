@@ -155,7 +155,7 @@ func SetBit(ip_bytes []byte, bit int, setToOne bool) net.IP {
 		return nil // Return nil if the IP address is invalid
 	}
 
-	fmt.Println("bit change:", bit)
+	fmt.Println("bit:", bit)
 	byteIndex := int(math.Ceil(float64(bit) / 8))  // Calculate the byte position
 	bitIndex := (bit-1) % 8   // Calculate the bit position within that byte
 
@@ -179,7 +179,7 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 
 	var addr_bytes []byte
 	addr_bytes = addr.To16()
-	fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n", addr.String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
+	fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n\n\n", addr.String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
 
 	fmt.Printf("set bits: start: %v, end: %v\n", start, end)
 	for i := end; i >= start; i-- {
@@ -190,11 +190,11 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 		subnet_bit_pos := (-i) + end
 		bit := (int(subnet_uint64) >> subnet_bit_pos) & 1
 		addr_output = SetBit(addr_bytes, i, bit == 1)
-		fmt.Printf("output nonfin: %v\n\n output_nonfin bits: %v", addr_output.String(),sprintBytesAsBinary(addr_output.To16()))
+		fmt.Printf("output nonfin: %v\n\n output_nonfin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.To16()))
 		// fmt.Printf("Bit %d: %d\n", i, bit)
 	}
 
-	fmt.Printf("output fin: %v\n\n output_fin bits: %v", addr_output.String(),sprintBytesAsBinary(addr_output.To16()))
+	fmt.Printf("output fin: %v\n\n output_fin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.To16()))
 	fmt.Println("")
 	fmt.Println("")
 	fmt.Println("")
