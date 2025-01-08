@@ -209,6 +209,7 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 
 	// Find all matches in the content
 	matches := re.FindAllStringSubmatch(content, -1)
+	var repped string
 	var vlan uint64
 	var err error
 	// Replace each match
@@ -226,10 +227,11 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		content = strings.ReplaceAll(content, fullMatch, replacement)
+		repped = strings.ReplaceAll(content, fullMatch, replacement)
+		fmt.Printf("full match: %v, repped: %v", fullMatch, replacement)
 	}
 
-	return content
+	return repped
 }
 
 // loadConfigs loads and parses all YAML files from a directory
