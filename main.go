@@ -706,6 +706,7 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 	}
 
 	// Initialize variables to store the IPv6 prefix
+	var ipv6Prefix_addr net.IP
 	var ipv6Prefix net.IP
 	var found_addr bool = false
 	var ipv6PrefixStr string
@@ -725,7 +726,7 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 			}
 			// (*ipnet).Mask = net.CIDRMask(prefix_len, 128)
 			fmt.Printf("ipnet: %v\n", ipnet.IP.String())
-			ipv6Prefix = set_ipaddr_bits(ipnet.IP.Mask(net.CIDRMask(prefix_len, 128)), vlan, prefix_len, prefix_full_subnet_len)
+			ipv6Prefix = ipnet.IP.Mask(net.CIDRMask(prefix_len, 128))
 
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
 			found_addr = true
@@ -742,7 +743,9 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 		}
 	}
 
-	ipv6PrefixStr = ipv6Prefix.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
+	ipv6Prefix_addr = set_ipaddr_bits(ipv6Prefix, vlan, prefix_len, prefix_full_subnet_len)
+
+	ipv6PrefixStr = ipv6Prefix_addr.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
 
 	// if strings.HasSuffix(ipv6PrefixStr, "::") {
 	// 	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, "::") + ":"
@@ -758,7 +761,7 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 		return "", netip, fmt.Errorf("no IPv6 prefix found")
 	}
 
-	return ipv6PrefixStr, ipv6Prefix, nil
+	return ipv6PrefixStr, ipv6Prefix_addr, nil
 }
 
 
