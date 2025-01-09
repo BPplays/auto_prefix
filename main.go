@@ -745,7 +745,8 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 
 	ipv6Prefix_addr = set_ipaddr_bits(ipv6Prefix, vlan, prefix_len, prefix_full_subnet_len)
 
-	ipv6PrefixStr = ipv6Prefix_addr.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
+	// ipv6PrefixStr = ipv6Prefix_addr.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
+	ipv6PrefixStr = ipv6Prefix_addr.String()
 
 	// if strings.HasSuffix(ipv6PrefixStr, "::") {
 	// 	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, "::") + ":"
