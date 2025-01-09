@@ -209,7 +209,7 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 
 	// Find all matches in the content
 	matches := re.FindAllStringSubmatch(content, -1)
-	var repped string
+	var repped string = content
 	var vlan uint64
 	var err error
 	// Replace each match
@@ -227,7 +227,7 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 		if err != nil {
 			log.Fatalln(err)
 		}
-		repped = strings.ReplaceAll(content, fullMatch, replacement)
+		repped = strings.ReplaceAll(repped, fullMatch, replacement)
 		fmt.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement)
 	}
 
