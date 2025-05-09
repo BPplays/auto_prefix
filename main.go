@@ -609,7 +609,6 @@ func get_prefix(config Config) (netip.Prefix, error)  {
 			addr, err := get_addr_from_if(interfaceName)
 			if err == nil {
 				found_prefix = true
-				break
 			}
 
 			err, prefix_len = get_pd_size_file(pd_file)
@@ -631,10 +630,9 @@ func get_prefix(config Config) (netip.Prefix, error)  {
 				log.Println(err)
 			} else {
 				found_prefix = true
-				break
 			}
-			prefix = pr.Prefix
 
+			prefix = pr.Prefix
 		}
 
 
@@ -655,6 +653,10 @@ func get_prefix(config Config) (netip.Prefix, error)  {
 				// return netip.Prefix{}, err
 			}
 			return *prefix, nil
+		}
+
+		if found_prefix {
+			break
 		}
 
 	}
