@@ -1,26 +1,35 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"log"
 	"math"
 	"math/rand"
-	"net"
+	// "net"
 	"os"
+	"net/http"
+	"net/netip"
+	"reflect"
+
 	// "os/exec"
+	"encoding/json"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
-	"encoding/json"
+
 	// "io/ioutil"
 
+	"context"
+
+	"github.com/coreos/go-systemd/v22/dbus"
 	"github.com/seancfoley/ipaddress-go/ipaddr"
 	"gopkg.in/yaml.v3"
-	"github.com/coreos/go-systemd/v22/dbus"
-	"context"
+
+	"github.com/BPplays/auto_prefix/source"
 )
 
 const (
@@ -30,10 +39,10 @@ const (
 	// named = "/etc/bind/named.conf"
 	// dnsmasq_master = "/etc/dnsmasq.conf.master"
 	// dnsmasq = "/etc/dnsmasq.conf"
-	// configFile     = "/etc/bind/.ipv6_prefix"
-	configDir = "/etc/auto_prefix/config.d"
+	configFile     = "/etc/auto_prefix/config.yml"
+	serviceDir = "/etc/auto_prefix/config.d"
 	prefix_store = "/etc/auto_prefix/prefix.json"
-	prefix_len_default = 56
+	Prefix_length_default = 56
 	prefix_full_subnet_len = 64
 	restartMode       = "replace" // or "force-reload"
 	if_file = "/etc/main_interface"
@@ -43,7 +52,7 @@ const (
 
 )
 var (
-	prefix_len = prefix_len_default
+	Prefix_length = Prefix_length_default
 )
 
 var interfaceName = ""
@@ -55,10 +64,16 @@ type FileMapping struct {
 }
 
 type jsonIPv6Prefix struct {
-	Prefix net.IP `json:"prefix"`
+	Prefix netip.Prefix `json:"prefix"`
 }
 
+
 type Config struct {
+	Source                 string        `yaml:"source"`
+	Url                 string        `yaml:"url"`
+}
+
+type Service struct {
 	Name                 string        `yaml:"name"`
 	Files                []FileMapping `yaml:"files"`
 	Folders              []FileMapping `yaml:"folders"`
@@ -67,12 +82,26 @@ type Config struct {
 	RestartTimeHost      float64           `yaml:"restart_time_host"`
 	RestartTimeout      int           `yaml:"restart_timeout"`
 }
-func sprintBytesAsBinary(data []byte) string {
-	var str strings.Builder
-	for _, b := range data {
-		str.WriteString(fmt.Sprintf("%08b ", b))
+
+func sprintBytesAsBinary(data interface{}) (string) {
+	v := reflect.ValueOf(data)
+	kind := v.Kind()
+	if kind != reflect.Slice && kind != reflect.Array {
+		return "unsupported type"
+		// panic(fmt.Sprintf("unsupported type: %s; want slice or array of bytes", kind))
 	}
-	return str.String()
+
+	var sb strings.Builder
+	for i := 0; i < v.Len(); i++ {
+		elem := v.Index(i)
+		// Ensure element is a byte (uint8)
+		if elem.Kind() != reflect.Uint8 {
+			// panic(fmt.Sprintf("element %d has type %s; want uint8", i, elem.Kind()))
+			return "element somehow not uint8?"
+		}
+		sb.WriteString(fmt.Sprintf("%08b ", elem.Uint()))
+	}
+	return sb.String()
 }
 
 
@@ -87,21 +116,36 @@ func get_interfaceName() error {
 	return nil
 }
 
-func get_pd_size() {
+func get_pd_size_file(pd_file string) (error, int) {
 	content, err := os.ReadFile(pd_file)
 	if err != nil {
-		prefix_len = prefix_len_default
-		return
+		return err, -1
 	}
 
-	prefix_len, err = strconv.Atoi(string(content))
+	Prefix_length, err = strconv.Atoi(string(content))
 
 	if err != nil {
-		prefix_len = prefix_len_default
+		return err, -1
 	}
 
-	return
+	return nil, Prefix_length
+
+
 }
+
+// func get_pd_size(tsource source.Source) (int) {
+// 	var prefix_len int
+// 	var err error
+//
+// 	if tsource == source.File {
+// 		err, prefix_len = get_pd_size_file(pd_file)
+// 		if err != nil {
+// 			prefix_len = Prefix_length_default
+// 		}
+// 	}
+//
+// 	return prefix_len
+// }
 
 // func loadAndSaveNamedConf(ipv6Prefix net.IP) error {
 // 	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
@@ -149,12 +193,7 @@ func get_pd_size() {
 // }
 
 // SetBit sets or clears a specific bit in the IP address based on the value of setToOne.
-func SetBit(ip_bytes []byte, bit int, setToOne bool) net.IP {
-	// ip_bytes = ip_bytes.To16() // Convert to 16-byte IPv6 format to handle both IPv4 and IPv6
-	if ip_bytes == nil {
-		return nil // Return nil if the IP address is invalid
-	}
-
+func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
 	fmt.Println("bit:", bit)
 	byteIndex := int(math.Ceil(float64(bit) / (8))+1)  // Calculate the byte position
 	bitIndex := (bit-1) % 8   // Calculate the bit position within that byte
@@ -169,17 +208,18 @@ func SetBit(ip_bytes []byte, bit int, setToOne bool) net.IP {
 	return ip_bytes
 }
 
-func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.IP {
-	var addr_output net.IP
+func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end int) netip.Prefix {
+	var addr_output netip.Addr
+	var addr_sl [16]byte
 
 	// if end - 64 > start {
 	// 	start = end - 64
 	// }
 
 
-	var addr_bytes []byte
-	addr_bytes = addr.To16()
-	fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n\n\n", addr.String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
+	var addr_bytes [16]byte
+	addr_bytes = prefix.Addr().As16()
+	fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n\n\n", prefix.Addr().String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
 
 	fmt.Printf("set bits: start: %v, end: %v\n", start, end)
 	for i := end; i >= start; i-- {
@@ -189,16 +229,18 @@ func set_ipaddr_bits(addr net.IP, subnet_uint64 uint64, start int, end int) net.
 
 		subnet_bit_pos := (-i) + end
 		bit := (int(subnet_uint64) >> subnet_bit_pos) & 1
-		addr_output = SetBit(addr_bytes, i, bit == 1)
-		fmt.Printf("output nonfin: %v\n\n output_nonfin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.To16()))
+		addr_sl = SetBit(addr_bytes, i, bit == 1)
+		fmt.Printf("output nonfin: %v\n\n output_nonfin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_sl))
 		// fmt.Printf("Bit %d: %d\n", i, bit)
 	}
 
-	fmt.Printf("output fin: %v\n\n output_fin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.To16()))
+	addr_output = netip.AddrFrom16(addr_sl)
+
+	fmt.Printf("output fin: %v\n\n output_fin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.As16()))
 	fmt.Println("")
 	fmt.Println("")
 	fmt.Println("")
-	return addr_output
+	return netip.PrefixFrom(addr_output, prefix.Bits())
 }
 
 func replaceIPv6Prefix(content, interfaceName string) string {
@@ -223,7 +265,7 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 			continue
 		}
 		// Call get_prefix function with interfaceName and vlan
-		replacement, _, err := get_prefix(interfaceName, vlan)
+		replacement, _, err := get_network_from_prefix(interfaceName, vlan)
 		if err != nil {
 			log.Fatalln(err)
 		}
@@ -234,9 +276,25 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 	return repped
 }
 
-// loadConfigs loads and parses all YAML files from a directory
-func loadConfigs(dir string) ([]Config, error) {
-	var configs []Config
+func parseConfigFile(filePath string) (Config, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return Config{}, fmt.Errorf("error opening file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	var config Config
+	decoder := yaml.NewDecoder(file)
+	if err := decoder.Decode(&config); err != nil {
+		return Config{}, fmt.Errorf("error decoding YAML file %s: %w", filePath, err)
+	}
+
+	return config, nil
+}
+
+// loadServices loads and parses all YAML files from a directory
+func loadServices(dir string) ([]Service, error) {
+	var configs []Service
 
 	// Walk through the directory
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
@@ -246,7 +304,7 @@ func loadConfigs(dir string) ([]Config, error) {
 
 		// Only process regular files with .yaml or .yml extensions
 		if !d.IsDir() && (filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml") {
-			fileConfigs, err := parseConfigFile(path)
+			fileConfigs, err := parseServiceFile(path)
 			if err != nil {
 				log.Printf("Error parsing file %s: %v", path, err)
 				return nil // Skip invalid files but continue processing others
@@ -259,15 +317,15 @@ func loadConfigs(dir string) ([]Config, error) {
 	return configs, err
 }
 
-// parseConfigFile parses a single YAML file into a slice of Config objects
-func parseConfigFile(filePath string) ([]Config, error) {
+// parseServiceFile parses a single YAML file into a slice of Config objects
+func parseServiceFile(filePath string) ([]Service, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("error opening file %s: %w", filePath, err)
 	}
 	defer file.Close()
 
-	var configs []Config
+	var configs []Service
 	decoder := yaml.NewDecoder(file)
 	if err := decoder.Decode(&configs); err != nil {
 		return nil, fmt.Errorf("error decoding YAML file %s: %w", filePath, err)
@@ -289,21 +347,6 @@ func main() {
 	fmt.Println("using if:", interfaceName)
 
 
-	// Load all configs from the directory
-	configs, err := loadConfigs(configDir)
-	if err != nil {
-		log.Fatalf("Error loading configs: %v", err)
-	}
-
-	// Print the parsed configurations
-	for _, config := range configs {
-		fmt.Printf("Name: %s\n", config.Name)
-		fmt.Printf("Files: %v\n", config.Files)
-		fmt.Printf("Restart Commands: %v\n", config.RestartCmds)
-		fmt.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
-		fmt.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
-		fmt.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
-	}
 
 	// Start an infinite loop
 	for {
@@ -315,7 +358,7 @@ func main() {
 			}
 		}
 
-		get_pd_size()
+		Prefix_length = get_pd_size()
 
 		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
 
@@ -329,11 +372,29 @@ func main() {
 
 		time.Sleep(sleep_dur)
 
+		config, err := parseConfigFile(configFile)
+
+		// Load all services from the directory
+		services, err := loadServices(serviceDir)
+		if err != nil {
+			log.Fatalf("Error loading configs: %v", err)
+		}
+
+		// // Print the parsed configurations
+		// for _, config := range services {
+		// 	fmt.Printf("Name: %s\n", config.Name)
+		// 	fmt.Printf("Files: %v\n", config.Files)
+		// 	fmt.Printf("Restart Commands: %v\n", config.RestartCmds)
+		// 	fmt.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
+		// 	fmt.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
+		// 	fmt.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
+		// }
+
 
 		ut = get_dns_ut()
 
 		// Get the current IPv6 prefix
-		currentIPv6Prefix_str, currentIPv6Prefix, err := get_prefix(interfaceName, 0)
+		currentIPv6Prefix_str, currentIPv6Prefix, err := get_prefix(config,)
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
@@ -368,7 +429,7 @@ func main() {
 			// 	return
 			// }
 
-			for _, config := range configs {
+			for _, config := range services {
 				err := repSaveFile(config, currentIPv6Prefix_str, currentIPv6Prefix)
 				if err != nil {
 					fmt.Println("Error:", err)
@@ -519,7 +580,7 @@ func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
 //     return nil
 // }
 
-func restart_services(config Config) {
+func restart_services(config Service) {
 
 	if config.RestartTimeout <= 0 {
 		config.RestartTimeout = 10
@@ -613,7 +674,7 @@ func restart_services(config Config) {
 	}
 }
 
-func repSaveFile(config Config, ipv6PrefixStr string, ipv6Prefix net.IP) (error) {
+func repSaveFile(config Service, ipv6PrefixStr string, ipv6Prefix netip.Prefix) (error) {
 
 	for _, folder := range config.Folders {
 
@@ -687,8 +748,61 @@ func repSaveFile(config Config, ipv6PrefixStr string, ipv6Prefix net.IP) (error)
 	return nil
 }
 
+func get_prefix(config Config, tsource source.Source) (netip.Prefix, error)  {
+	var network netip.Prefix
+
+
+	if tsource == source.File {
+		var prefix_len int
+
+		_, ip, err := get_prefix_from_if(interfaceName, 0)
+		if err != nil {
+			return netip.Prefix{}, err
+		}
+
+		err, prefix_len = get_pd_size_file(pd_file)
+		if err != nil {
+			prefix_len = Prefix_length_default
+		}
+
+		network = netip.PrefixFrom(ip, prefix_len)
+
+		return network, nil
+
+
+
+	} else if tsource == source.Url {
+		resp, err := http.Get(config.Url)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer resp.Body.Close()
+
+		var pr struct{ Net string `json:"net"` }
+		if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+			log.Fatal(err)
+		}
+
+		// Now parse the CIDR string back into an *net.IPNet
+		ipnet, err := netip.ParsePrefix(pr.Net)
+		if err != nil {
+			log.Fatal("invalid CIDR:", err)
+		}
+
+		return ipnet, nil
+
+
+	}
+
+	return netip.Prefix{}, errors.New("nothing")
+}
+
+func get_network_from_prefix(prefix netip.Prefix, vlan uint64) {
+
+}
+
 // Function to get the current IPv6 prefix
-func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
+func get_prefix_from_if(interfaceName string, vlan uint64) (string, net.IP, error) {
 	// Specify the network interface name
 	// interfaceName := "eth0" // Change this to your desired interface name
 
@@ -726,7 +840,7 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 			}
 			// (*ipnet).Mask = net.CIDRMask(prefix_len, 128)
 			fmt.Printf("ipnet: %v\n", ipnet.IP.String())
-			ipv6Prefix = ipnet.IP.Mask(net.CIDRMask(prefix_len, 128))
+			ipv6Prefix = ipnet.IP.Mask(net.CIDRMask(Prefix_length, 128))
 
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
 			found_addr = true
@@ -743,7 +857,7 @@ func get_prefix(interfaceName string, vlan uint64) (string, net.IP, error) {
 		}
 	}
 
-	ipv6Prefix_addr = set_ipaddr_bits(ipv6Prefix, vlan, prefix_len, prefix_full_subnet_len)
+	ipv6Prefix_addr = set_ipaddr_bits(ipv6Prefix, vlan, Prefix_length, prefix_full_subnet_len)
 
 	// ipv6PrefixStr = ipv6Prefix_addr.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
 	ipv6PrefixStr = ipv6Prefix_addr.String()
@@ -864,7 +978,7 @@ func get_prefix_padded(ipnet *net.IPNet, vlan uint64) string {
 
 
 	// If the prefix length is less than 64, pad it with zeros
-	requiredLength := int(math.Floor(float64(prefix_len / 4)))
+	requiredLength := int(math.Floor(float64(Prefix_length / 4)))
 	// if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") - (64 - prefix_len) {
 	// 	ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
 	// 	padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
@@ -915,7 +1029,7 @@ func get_prefix_padded(ipnet *net.IPNet, vlan uint64) string {
 	ipv6Prefix = ipv6psb.String()
 
 
-	maxVLANs := uint64(math.Pow(2, float64(64-prefix_len)))
+	maxVLANs := uint64(math.Pow(2, float64(64-Prefix_length)))
 
 
 	// for vlan > maxVLANs {
