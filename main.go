@@ -596,6 +596,7 @@ func get_prefix(config Config) (netip.Prefix, error)  {
 
 	tsource, err := source.FromString(config.Source)
 	if err != nil {
+		log.Fatalln("config source error")
 		return netip.Prefix{}, err
 	}
 
@@ -638,9 +639,11 @@ func get_prefix(config Config) (netip.Prefix, error)  {
 
 
 		if found_prefix {
+			log.Println("found new prefix")
 			updateIPv6Prefix(prefix)
 			break
 		} else {
+			log.Println("did not find new prefix")
 			prefix, err := readIPv6PrefixFromFile()
 			if err != nil {
 				continue
