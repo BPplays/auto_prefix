@@ -131,11 +131,11 @@ func get_pd_size_file(pd_file string) (error, int) {
 
 // SetBit sets or clears a specific bit in the IP address based on the value of setToOne.
 func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
-	fmt.Println("bit:", bit)
+	// fmt.Println("bit:", bit)
 	byteIndex := int(math.Ceil(float64(bit) / (8))+1)  // Calculate the byte position
 	bitIndex := (bit-1) % 8   // Calculate the bit position within that byte
 
-	fmt.Printf("biti %v, bytei %v\n", bitIndex, byteIndex)
+	// fmt.Printf("biti %v, bytei %v\n", bitIndex, byteIndex)
 	if setToOne {
 		ip_bytes[byteIndex] |= 1 << (7 - bitIndex) // Set the bit to 1
 	} else {
@@ -152,9 +152,9 @@ func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end i
 
 	var addr_bytes [16]byte
 	addr_bytes = prefix.Addr().As16()
-	fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n\n\n", prefix.Addr().String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
+	// fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n\n\n", prefix.Addr().String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
 
-	fmt.Printf("set bits: start: %v, end: %v\n", start, end)
+	// fmt.Printf("set bits: start: %v, end: %v\n", start, end)
 	for i := end; i >= start; i-- {
 		if i == start {
 			break
@@ -163,16 +163,16 @@ func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end i
 		subnet_bit_pos := (-i) + end
 		bit := (int(subnet_uint64) >> subnet_bit_pos) & 1
 		addr_sl = SetBit(addr_bytes, i, bit == 1)
-		fmt.Printf("output nonfin: %v\n\n output_nonfin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_sl))
+		// fmt.Printf("output nonfin: %v\n\n output_nonfin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_sl))
 		// fmt.Printf("Bit %d: %d\n", i, bit)
 	}
 
 	addr_output = netip.AddrFrom16(addr_sl)
 
-	fmt.Printf("output fin: %v\n\n output_fin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.As16()))
-	fmt.Println("")
-	fmt.Println("")
-	fmt.Println("")
+	// fmt.Printf("output fin: %v\n\n output_fin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.As16()))
+	// fmt.Println("")
+	// fmt.Println("")
+	// fmt.Println("")
 	return netip.PrefixFrom(addr_output, prefix.Bits())
 }
 
@@ -180,7 +180,7 @@ func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
 	// Define the regular expression pattern
 	pattern := `#@ipv6_prefix_([0-9a-fA-F]+)@#`
 	re := regexp.MustCompile(pattern)
-	fmt.Println("starting regex conv")
+	// fmt.Println("starting regex conv")
 
 	// Find all matches in the content
 	matches := re.FindAllStringSubmatch(content, -1)
@@ -200,7 +200,7 @@ func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
 		// Call get_prefix function with interfaceName and vlan
 		replacement_ip := get_network_from_prefix(prefix, vlan)
 		repped = strings.ReplaceAll(repped, fullMatch, replacement_ip.Addr().String())
-		fmt.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement_ip.Addr().String())
+		// fmt.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement_ip.Addr().String())
 	}
 
 	return repped
@@ -274,12 +274,13 @@ func main() {
 
 
 	fmt.Println("starting program")
-	fmt.Println("using if:", interfaceName)
+	// fmt.Println("using if:", interfaceName)
 
 
 
 	// Start an infinite loop
 	for {
+		fmt.Println("starting loop")
 		err := get_interfaceName_file()
 		if err != nil {
 			if interfaceName == "" {
