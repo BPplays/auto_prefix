@@ -754,16 +754,17 @@ func writeIPv6PrefixToFile(prefix jsonIPv6Prefix) error {
 func updateIPv6Prefix(newPrefix netip.Prefix) error {
 	var no_stored bool
 	storedPrefix, err := readIPv6PrefixFromFile()
+	if err != nil {
+		fmt.Println("can't read prefix", err)
+		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix})
+	}
+
 	if storedPrefix == nil {
 		no_stored = true
 		p := netip.PrefixFrom(netip.IPv6Unspecified(), 0)
 		storedPrefix = &p
 	}
 
-	if err != nil {
-		fmt.Println(err)
-		// return err
-	}
 
 	// If no prefix exists or the prefix is different, write new one
 	if no_stored || *storedPrefix != newPrefix {
