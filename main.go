@@ -655,10 +655,6 @@ func get_prefix(config Config) (netip.Prefix, error)  {
 			return *prefix, nil
 		}
 
-		if found_prefix {
-			break
-		}
-
 	}
 	if found_prefix {
 		return prefix, nil
