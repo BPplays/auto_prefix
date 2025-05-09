@@ -7,7 +7,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
-	// "net"
+	"net"
 	"os"
 	"net/http"
 	"net/netip"
@@ -33,12 +33,6 @@ import (
 )
 
 const (
-	// zonesMasterDir = "/etc/bind/zones.master/"
-	// zonesDir       = "/etc/bind/zones/"
-	// named_master = "/etc/bind/named.conf.master"
-	// named = "/etc/bind/named.conf"
-	// dnsmasq_master = "/etc/dnsmasq.conf.master"
-	// dnsmasq = "/etc/dnsmasq.conf"
 	configFile     = "/etc/auto_prefix/config.yml"
 	serviceDir = "/etc/auto_prefix/config.d"
 	prefix_store = "/etc/auto_prefix/prefix.json"
@@ -47,13 +41,14 @@ const (
 	restartMode       = "replace" // or "force-reload"
 	if_file = "/etc/main_interface"
 	pd_file = "/etc/pd_size"
-	// interfaceName = "ens33"
 	checkInterval  = 5 * time.Second
 
 )
 var (
 	Prefix_length = Prefix_length_default
 )
+
+var prefixNotFound error = errors.New("no prefix found")
 
 var interfaceName = ""
 var ut string = ""
@@ -105,7 +100,7 @@ func sprintBytesAsBinary(data interface{}) (string) {
 }
 
 
-func get_interfaceName() error {
+func get_interfaceName_file() error {
 	content, err := os.ReadFile(if_file)
 	if err != nil {
 		return err
@@ -133,64 +128,6 @@ func get_pd_size_file(pd_file string) (error, int) {
 
 }
 
-// func get_pd_size(tsource source.Source) (int) {
-// 	var prefix_len int
-// 	var err error
-//
-// 	if tsource == source.File {
-// 		err, prefix_len = get_pd_size_file(pd_file)
-// 		if err != nil {
-// 			prefix_len = Prefix_length_default
-// 		}
-// 	}
-//
-// 	return prefix_len
-// }
-
-// func loadAndSaveNamedConf(ipv6Prefix net.IP) error {
-// 	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-// 	fmt.Printf("setting reverse dns to: %v\n", reverseDNS)
-//
-//
-//
-// 	content, err := os.ReadFile(named_master)
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	replacedContent := strings.ReplaceAll(string(content), "@::#@ipv6_revdns_prefix@#", reverseDNS)
-//
-// 	err = os.WriteFile(named, []byte(replacedContent), 0644)
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	return nil
-// }
-//
-// func loadAndSaveDnsmasqConf(ipv6Prefix net.IP, ipv6PrefixStr string) error {
-//
-// 	fmt.Println("loading dnsmasq")
-//
-// 	content, err := os.ReadFile(dnsmasq_master)
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	// Replace '#@ipv6_prefix@#::@' with the obtained prefix
-// 	// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
-// 	reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-// 	replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
-//
-// 	err = os.WriteFile(dnsmasq, []byte(replacedContent), 0644)
-// 	if err != nil {
-// 		return err
-// 	}
-//
-// 	fmt.Println("saving dnsmasq")
-//
-// 	return nil
-// }
 
 // SetBit sets or clears a specific bit in the IP address based on the value of setToOne.
 func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
@@ -211,10 +148,6 @@ func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
 func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end int) netip.Prefix {
 	var addr_output netip.Addr
 	var addr_sl [16]byte
-
-	// if end - 64 > start {
-	// 	start = end - 64
-	// }
 
 
 	var addr_bytes [16]byte
@@ -243,7 +176,7 @@ func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end i
 	return netip.PrefixFrom(addr_output, prefix.Bits())
 }
 
-func replaceIPv6Prefix(content, interfaceName string) string {
+func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
 	// Define the regular expression pattern
 	pattern := `#@ipv6_prefix_([0-9a-fA-F]+)@#`
 	re := regexp.MustCompile(pattern)
@@ -265,12 +198,9 @@ func replaceIPv6Prefix(content, interfaceName string) string {
 			continue
 		}
 		// Call get_prefix function with interfaceName and vlan
-		replacement, _, err := get_network_from_prefix(interfaceName, vlan)
-		if err != nil {
-			log.Fatalln(err)
-		}
-		repped = strings.ReplaceAll(repped, fullMatch, replacement)
-		fmt.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement)
+		replacement_ip := get_network_from_prefix(prefix, vlan)
+		repped = strings.ReplaceAll(repped, fullMatch, replacement_ip.Addr().String())
+		fmt.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement_ip.Addr().String())
 	}
 
 	return repped
@@ -336,7 +266,7 @@ func parseServiceFile(filePath string) ([]Service, error) {
 
 
 func main() {
-	var lastIPv6Prefix string = ""
+	var lastIPv6Prefix netip.Prefix = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
 
 	var sleep_sec float64
 	var sleep_dur time.Duration
@@ -350,15 +280,13 @@ func main() {
 
 	// Start an infinite loop
 	for {
-		get_interfaceName()
+		err := get_interfaceName_file()
 		if err != nil {
 			if interfaceName == "" {
 				time.Sleep(2 * time.Second)
 				continue
 			}
 		}
-
-		Prefix_length = get_pd_size()
 
 		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
 
@@ -373,8 +301,10 @@ func main() {
 		time.Sleep(sleep_dur)
 
 		config, err := parseConfigFile(configFile)
+		if err != nil {
+			log.Fatalf("Error loading configs: %v", err)
+		}
 
-		// Load all services from the directory
 		services, err := loadServices(serviceDir)
 		if err != nil {
 			log.Fatalf("Error loading configs: %v", err)
@@ -394,7 +324,7 @@ func main() {
 		ut = get_dns_ut()
 
 		// Get the current IPv6 prefix
-		currentIPv6Prefix_str, currentIPv6Prefix, err := get_prefix(config,)
+		currentIPv6Prefix, err := get_prefix(config)
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
@@ -402,7 +332,7 @@ func main() {
 
 
 		// If the current prefix is different from the last one, update the zone files and reload services
-		if currentIPv6Prefix_str != lastIPv6Prefix {
+		if currentIPv6Prefix != lastIPv6Prefix {
 			fmt.Print("\n\n\n\n")
 			fmt.Println(strings.Repeat("=", 50))
 			fmt.Println(strings.Repeat("=", 50))
@@ -429,14 +359,14 @@ func main() {
 			// 	return
 			// }
 
-			for _, config := range services {
-				err := repSaveFile(config, currentIPv6Prefix_str, currentIPv6Prefix)
+			for _, service := range services {
+				err := repSaveFileAndFolder(service, currentIPv6Prefix)
 				if err != nil {
 					fmt.Println("Error:", err)
 					// return
 				}
 
-				restart_services(config)
+				restart_services(service)
 			}
 
 			// err = restart_dns()
@@ -445,7 +375,7 @@ func main() {
 			// 	return
 			// }
 
-			lastIPv6Prefix = currentIPv6Prefix_str
+			lastIPv6Prefix = currentIPv6Prefix
 			fmt.Printf("Files updated successfully.\n\n")
 
 
@@ -492,93 +422,25 @@ func get_dns_ut() (string) {
 	return ut
 }
 
-func replace_vars(content *[]byte, prefix *string, rev_dns *string) (string) {
+func replace_vars(content *[]byte, prefix *netip.Prefix) (string) {
 	if prefix == nil {
 		log.Fatal("prefix is nil")
 	}
+	rev_dns := IPv6PrefixToReverseDNS(*prefix, 64, 0)
 
 	fmt.Println("rep vars")
-	replacedContent := replaceIPv6Prefix(string(*content), interfaceName)
+	replacedContent := replaceIPv6Prefix(string(*content), *prefix)
 	fmt.Println("repped vars dyn vlan")
 
-	replacedContent = strings.ReplaceAll(replacedContent, "#@ipv6_prefix@#", *prefix)
+	replacedContent = strings.ReplaceAll(replacedContent, "#@ipv6_prefix@#", (*prefix).Addr().String())
 	fmt.Println("repped vars main")
 	replacedContent = strings.ReplaceAll(replacedContent, "#@ut_10@#", ut)
 	fmt.Println("repped vars ut10")
-	replacedContent = strings.ReplaceAll(replacedContent, "@::#@ipv6_revdns_prefix@#", *rev_dns)
+	replacedContent = strings.ReplaceAll(replacedContent, "@::#@ipv6_revdns_prefix@#", rev_dns)
 	fmt.Println("repped vars reverse")
 
 	return replacedContent
 }
-
-// Function to load files from zones.master directory, replace '#@ipv6_prefix@#::@' with the obtained prefix,
-// and save them to the zones directory
-// func loadAndSaveZoneFiles(ipv6Prefix net.IP, ipv6PrefixStr string) error {
-// 	// // Open the zones.master directory
-// 	// files, err := ioutil.ReadDir(zonesMasterDir)
-// 	// if err != nil {
-// 	//     return err
-// 	// }
-//
-// 	entries, err := os.ReadDir(zonesMasterDir)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	files := make([]fs.FileInfo, 0, len(entries))
-// 	for _, entry := range entries {
-// 		info, err := entry.Info()
-// 		if err != nil {
-// 			return err
-// 		}
-// 		files = append(files, info)
-// 	}
-//
-// 	// Iterate over files in the zones.master directory
-// 	for _, file := range files {
-// 		// Skip directories
-// 		if file.IsDir() {
-// 			continue
-// 		}
-//
-// 		// Read the contents of the file
-// 		filePath := filepath.Join(zonesMasterDir, file.Name())
-// 		content, err := os.ReadFile(filePath)
-// 		if err != nil {
-// 			return err
-// 		}
-//
-// 		// Replace '#@ipv6_prefix@#::@' with the obtained prefix
-// 		// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
-// 		reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-// 		replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
-//
-// 		// Save the modified content to the zones directory with the same filename
-// 		outputFile := filepath.Join(zonesDir, file.Name())
-// 		err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
-// 		if err != nil {
-// 			return err
-// 		}
-// 	}
-//
-// 	return nil
-// }
-
-// // Function to reload bind9.service and named.service
-// func reloadServices() error {
-//     // Reload bind9.service
-//     err := exec.Command("systemctl", "reload", "bind9.service").Run()
-//     if err != nil {
-//         return err
-//     }
-
-//     // Reload named.service
-//     err = exec.Command("systemctl", "reload", "named.service").Run()
-//     if err != nil {
-//         return err
-//     }
-
-//     return nil
-// }
 
 func restart_services(config Service) {
 
@@ -674,9 +536,10 @@ func restart_services(config Service) {
 	}
 }
 
-func repSaveFile(config Service, ipv6PrefixStr string, ipv6Prefix netip.Prefix) (error) {
+func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
+	var allFiles []FileMapping = service.Files
 
-	for _, folder := range config.Folders {
+	for _, folder := range service.Folders {
 
 		entries, err := os.ReadDir(folder.From)
 		if err != nil {
@@ -693,46 +556,24 @@ func repSaveFile(config Service, ipv6PrefixStr string, ipv6Prefix netip.Prefix) 
 
 		// Iterate over files in the zones.master directory
 		for _, file := range files {
-			// Skip directories
 			if file.IsDir() {
 				continue
 			}
 
-			// Read the contents of the file
 			filePath := filepath.Join(folder.From, file.Name())
-			fmt.Printf("reading: %v\n", filePath)
-			content, err := os.ReadFile(filePath)
-			if err != nil {
-				return err
-			}
-
-			// Replace '#@ipv6_prefix@#::@' with the obtained prefix
-			// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
-			reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-			fmt.Printf("repping: %v, file: %v", config.Name, file.Name())
-			replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
-
-			// Save the modified content to the zones directory with the same filename
-			outputFile := filepath.Join(folder.To, file.Name())
-			fmt.Printf("saving: %v\n", outputFile)
-			err = os.WriteFile(outputFile, []byte(replacedContent), 0644)
-			if err != nil {
-				return err
-			}
+			filePathTo := filepath.Join(folder.To, file.Name())
+			allFiles = append(allFiles, FileMapping{From: filePath, To: filePathTo})
 		}
 	}
 
-	for _, file := range config.Files {
+	for _, file := range allFiles {
 		fmt.Printf("reading: %v\n", file.From)
 		content, err := os.ReadFile(file.From)
 		if err != nil {
 			return err
 		}
 
-		// Replace '#@ipv6_prefix@#::@' with the obtained prefix
-		// replacedContent := strings.ReplaceAll(string(content), "#@ipv6_prefix@#::@", ipv6Prefix)
-		reverseDNS := IPv6PrefixToReverseDNS(ipv6Prefix, 64, 0) // todo make use prefix len
-		replacedContent := replace_vars(&content, &ipv6PrefixStr, &reverseDNS)
+		replacedContent := replace_vars(&content, &prefix)
 
 		err = os.WriteFile(file.To, []byte(replacedContent), 0644)
 		if err != nil {
@@ -748,99 +589,120 @@ func repSaveFile(config Service, ipv6PrefixStr string, ipv6Prefix netip.Prefix) 
 	return nil
 }
 
-func get_prefix(config Config, tsource source.Source) (netip.Prefix, error)  {
-	var network netip.Prefix
+func get_prefix(config Config) (netip.Prefix, error)  {
+	var prefix netip.Prefix
+	var found_prefix bool = false
 
-
-	if tsource == source.File {
-		var prefix_len int
-
-		_, ip, err := get_prefix_from_if(interfaceName, 0)
-		if err != nil {
-			return netip.Prefix{}, err
-		}
-
-		err, prefix_len = get_pd_size_file(pd_file)
-		if err != nil {
-			prefix_len = Prefix_length_default
-		}
-
-		network = netip.PrefixFrom(ip, prefix_len)
-
-		return network, nil
-
-
-
-	} else if tsource == source.Url {
-		resp, err := http.Get(config.Url)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer resp.Body.Close()
-
-		var pr struct{ Net string `json:"net"` }
-		if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
-			log.Fatal(err)
-		}
-
-		// Now parse the CIDR string back into an *net.IPNet
-		ipnet, err := netip.ParsePrefix(pr.Net)
-		if err != nil {
-			log.Fatal("invalid CIDR:", err)
-		}
-
-		return ipnet, nil
-
-
+	tsource, err := source.FromString(config.Source)
+	if err != nil {
+		return netip.Prefix{}, err
 	}
 
-	return netip.Prefix{}, errors.New("nothing")
+
+	for range 5 {
+
+		if tsource == source.File {
+			var prefix_len int
+
+			addr, err := get_addr_from_if(interfaceName)
+			if err == nil {
+				found_prefix = true
+				break
+			}
+
+			err, prefix_len = get_pd_size_file(pd_file)
+			if err != nil {
+				prefix_len = Prefix_length_default
+			}
+
+			prefix = netip.PrefixFrom(addr, prefix_len)
+
+		} else if tsource == source.Url {
+			resp, err := http.Get(config.Url)
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer resp.Body.Close()
+
+			var pr struct{ Prefix netip.Prefix `json:"prefix"` }
+			if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
+				log.Println(err)
+			} else {
+				found_prefix = true
+				break
+			}
+			prefix = pr.Prefix
+
+		}
+
+
+		if found_prefix {
+			updateIPv6Prefix(prefix)
+			break
+		} else {
+			prefix, err := readIPv6PrefixFromFile()
+			if err != nil {
+				continue
+				// if os.IsNotExist(err) {
+				// 	continue
+				// 	// return netip.Prefix{}, os.ErrNotExist
+				// }
+				//
+				// return netip.Prefix{}, err
+			}
+			return *prefix, nil
+		}
+
+	}
+	if found_prefix {
+		return prefix, nil
+
+	} else {
+		return netip.Prefix{}, prefixNotFound
+	}
+
 }
 
-func get_network_from_prefix(prefix netip.Prefix, vlan uint64) {
-
+func get_network_from_prefix(prefix netip.Prefix, vlan uint64) (netip.Prefix) {
+	outputPrefix := set_ipaddr_bits(prefix, vlan, Prefix_length, prefix_full_subnet_len)
+	return outputPrefix
 }
 
-// Function to get the current IPv6 prefix
-func get_prefix_from_if(interfaceName string, vlan uint64) (string, net.IP, error) {
+
+func get_addr_from_if(interfaceName string) (netip.Addr, error) {
 	// Specify the network interface name
 	// interfaceName := "eth0" // Change this to your desired interface name
 
-	var netip net.IP
+	var addr netip.Addr
 	// Get network interface
 	iface, err := net.InterfaceByName(interfaceName)
 	if err != nil {
-		return "", netip, err
+		return addr, err
 	}
 
 	// Get addresses for the interface
 	addrs, err := iface.Addrs()
 	if err != nil {
-		return "", netip, err
+		return addr, err
 	}
 
 	// Initialize variables to store the IPv6 prefix
-	var ipv6Prefix_addr net.IP
-	var ipv6Prefix net.IP
+	var ipv6Prefix_addr netip.Addr
+	var ipv6Prefix *netip.Prefix
 	var found_addr bool = false
-	var ipv6PrefixStr string
 
 	// Iterate over addresses to find the IPv6 prefix
-	var ip net.IP
+	var ip netip.Addr
 	for _, addr := range addrs {
-		// Check if it's an IPv6 address and not temporary
-		ip, err = addrToIP(addr)
+		ip, err = addrToNetIPaddr(addr)
 		if err != nil {
-			continue
+			log.Fatalln("can't parse addr")
 		}
+
 		if isValidIPprefixAddress(ip) {
-			ipnet, ok := addr.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			// (*ipnet).Mask = net.CIDRMask(prefix_len, 128)
-			fmt.Printf("ipnet: %v\n", ipnet.IP.String())
-			ipv6Prefix = ipnet.IP.Mask(net.CIDRMask(Prefix_length, 128))
+			p := netip.PrefixFrom(ip, Prefix_length)
+			ipv6Prefix = &p
+			fmt.Printf("ipnet: %v\n", ipv6Prefix.Addr().String())
 
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
 			found_addr = true
@@ -849,43 +711,21 @@ func get_prefix_from_if(interfaceName string, vlan uint64) (string, net.IP, erro
 	}
 
 	if found_addr {
-		updateIPv6Prefix(ipv6Prefix)
+		updateIPv6Prefix(*ipv6Prefix)
 	} else {
 		ipv6Prefix, err = readIPv6PrefixFromFile()
 		if err != nil {
-			return "", nil, err
+			return netip.Addr{}, err
 		}
 	}
 
-	ipv6Prefix_addr = set_ipaddr_bits(ipv6Prefix, vlan, Prefix_length, prefix_full_subnet_len)
-
-	// ipv6PrefixStr = ipv6Prefix_addr.Mask(net.CIDRMask(prefix_full_subnet_len, 128)).String()
-	ipv6PrefixStr = ipv6Prefix_addr.String()
-
-	// if strings.HasSuffix(ipv6PrefixStr, "::") {
-	// 	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, "::") + ":"
-	// }
-
-	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, "::")
-	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, ":")
-	ipv6PrefixStr = strings.TrimSuffix(ipv6PrefixStr, ":")
-	fmt.Println("ipv6Prefix:", ipv6PrefixStr)
-
-	// If no IPv6 prefix found, return an error
-	if ipv6PrefixStr == "" {
-		return "", netip, fmt.Errorf("no IPv6 prefix found")
-	}
-
-	return ipv6PrefixStr, ipv6Prefix_addr, nil
+	return ipv6Prefix_addr, nil
 }
 
 
-func readIPv6PrefixFromFile() (net.IP, error) {
+func readIPv6PrefixFromFile() (*netip.Prefix, error) {
 	file, err := os.Open(prefix_store)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil // File does not exist, treat as empty
-		}
 		return nil, err
 	}
 	defer file.Close()
@@ -900,7 +740,7 @@ func readIPv6PrefixFromFile() (net.IP, error) {
 		return nil, err
 	}
 
-	return prefix.Prefix, nil
+	return &prefix.Prefix, nil
 }
 
 func writeIPv6PrefixToFile(prefix jsonIPv6Prefix) error {
@@ -911,14 +751,22 @@ func writeIPv6PrefixToFile(prefix jsonIPv6Prefix) error {
 	return os.WriteFile(prefix_store, data, 0644)
 }
 
-func updateIPv6Prefix(newPrefix net.IP) error {
+func updateIPv6Prefix(newPrefix netip.Prefix) error {
+	var no_stored bool
 	storedPrefix, err := readIPv6PrefixFromFile()
+	if storedPrefix == nil {
+		no_stored = true
+		p := netip.PrefixFrom(netip.IPv6Unspecified(), 0)
+		storedPrefix = &p
+	}
+
 	if err != nil {
-		return err
+		fmt.Println(err)
+		// return err
 	}
 
 	// If no prefix exists or the prefix is different, write new one
-	if storedPrefix == nil || !storedPrefix.Equal(newPrefix) {
+	if no_stored || *storedPrefix != newPrefix {
 		fmt.Println("Updating IPv6 prefix to:", newPrefix.String())
 		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix})
 	}
@@ -928,161 +776,15 @@ func updateIPv6Prefix(newPrefix net.IP) error {
 }
 
 
-// // Convert IPv6 address to a big integer
-// func IPv6ToBigInt(ipv6Addr string) (*big.Int, error) {
-// 	ip := net.ParseIP(ipv6Addr)
-// 	if ip == nil {
-// 		return nil, fmt.Errorf("invalid IP address")
-// 	}
 
-// 	// Extract the IPv6 bytes
-// 	ip = ip.To16()
-// 	if ip == nil {
-// 		return nil, fmt.Errorf("not an IPv6 address")
-// 	}
+func IPv6PrefixToReverseDNS(prefix netip.Prefix, prefLen int, vlan uint64) string {
+	prefix_vlan := get_network_from_prefix(prefix, vlan)
 
-// 	// Convert bytes to big integer
-// 	bigInt := new(big.Int)
-// 	bigInt.SetBytes(ip)
-
-// 	return bigInt, nil
-// }
-
-// // Convert big integer to an IPv6 address
-// func BigIntToIPv6(bigInt *big.Int) (string, error) {
-// 	// Convert big integer to bytes
-// 	bytes := bigInt.Bytes()
-
-// 	// IPv6 address must be 16 bytes
-// 	if len(bytes) > 16 {
-// 		return "", fmt.Errorf("integer too large for an IPv6 address")
-// 	}
-
-// 	// Pad with leading zeros if necessary
-// 	paddedBytes := make([]byte, 16)
-// 	copy(paddedBytes[16-len(bytes):], bytes)
-
-// 	// Convert bytes to IP
-// 	ip := net.IP(paddedBytes)
-// 	return ip.String(), nil
-// }
-
-
-// Function to extract the IPv6 prefix from an IPNet object and pad it to /64 length
-func get_prefix_padded(ipnet *net.IPNet, vlan uint64) string {
-	// Get the network portion of the IP
-	network := ipnet.IP.Mask(ipnet.Mask)
-
-	// Convert the network portion to a string representation
-	ipv6Prefix := network.String()
-
-
-	// If the prefix length is less than 64, pad it with zeros
-	requiredLength := int(math.Floor(float64(Prefix_length / 4)))
-	// if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") - (64 - prefix_len) {
-	// 	ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
-	// 	padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
-	// 	ipv6Prefix += padding[len(ipv6Prefix):requiredLength]          // Add padding to reach /64 length
-	// }
-
-	var ipv6psb strings.Builder
-	for strings.HasSuffix(ipv6Prefix, ":") {
-		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
-	}
-
-	i := 0
-	times_nocol := 0
-
-	// Split the string by ":"
-	parts := strings.Split(ipv6Prefix, ":")
-
-	// Pad each part with leading zeros
-	for i, part := range parts {
-		parts[i] = fmt.Sprintf("%04s", part)
-	}
-
-	// Join the parts with ":"
-	output := strings.Join(parts, ":")
-	ipv6Prefixrn := []rune(output)
-
-	for index := 0; i <= requiredLength-1; {
-		if index >= 0 && index < len(ipv6Prefixrn) {
-			if ipv6Prefixrn[index] != ':' {
-				i +=1
-				times_nocol += 1
-			} else {
-				println("adding nocol bef: ", i)
-				i += 4 - times_nocol
-				println("adding nocol: ", i, 4 - times_nocol)
-				times_nocol = 0
-			}
-			ipv6psb.WriteRune(ipv6Prefixrn[index])
-		} else {
-			i +=1
-
-			ipv6psb.WriteRune('0')
-		}
-		index +=1
-	}
-	println("fkldjs ", ipv6psb.String(), string(ipv6Prefixrn), ipv6Prefix)
-
-	ipv6Prefix = ipv6psb.String()
-
-
-	maxVLANs := uint64(math.Pow(2, float64(64-Prefix_length)))
-
-
-	// for vlan > maxVLANs {
-	// 	vlan -= int16(math.Pow(2, float64(64-prefix_len)))
-	// 	fmt.Println("trimming vlan to VLAN:", vlan)
-	// }
-	vlan %= maxVLANs
-	fmt.Println("VLAN hex:", fmt.Sprintf("%X", vlan))
-
-
-	ipv6Prefix += fmt.Sprintf("%X", vlan)
-
-	// Ensure it ends with a single colon
-	if !strings.HasSuffix(ipv6Prefix, ":") {
-		ipv6Prefix += ":"
-	}
-
-	// Remove one colon until the character before the last is not a colon
-	for strings.HasSuffix(ipv6Prefix, "::") {
-		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
-	}
-	fmt.Println("VLAN:", vlan)
-	return ipv6Prefix
-}
-
-
-func ConvertIPToIPNet(ip net.IP, prefixLength int) *net.IPNet {
-	// Determine the appropriate mask for the IP address (IPv4 or IPv6).
-	var mask net.IPMask
-	if ip.To4() != nil {
-		mask = net.CIDRMask(prefixLength, 32)
-	} else {
-		mask = net.CIDRMask(prefixLength, 128)
-	}
-
-	return &net.IPNet{
-		IP:   ip,
-		Mask: mask,
-	}
-}
-
-func IPv6PrefixToReverseDNS(prefix net.IP, prefLen int, vlan uint64) string {
-	// exp := ipaddr.NewIPAddressString(prefix + ":").GetAddress()
-	exp, err := ipaddr.NewIPAddressFromNetIP(prefix)
+	exp, err := ipaddr.NewIPAddressFromNetNetIPPrefix(prefix_vlan)
 	if err != nil {
 		return ""
 	}
 
-	// exp := ConvertIPToIPNet(prefix, prefix_len)
-	// exp := get_prefix_padded(tmp, vlan)
-	// exp = exp.AdjustPrefixLen(ipaddr.BitCount(uint32(prefLen)))
-
-	// Get the reverse DNS string
 	revdns, err := exp.GetSection().ToReverseDNSString()
 	if err != nil {
 		log.Fatalln(err)
@@ -1104,77 +806,29 @@ func IPv6PrefixToReverseDNS(prefix net.IP, prefLen int, vlan uint64) string {
 	return prefixPart
 }
 
+func addrTo_net_IP(addr net.Addr) (net.IP, error) {
+	switch v := addr.(type) {
+	case *net.IPAddr:
+		return v.IP, nil
+	case *net.IPNet:
+		return v.IP, nil
+	case *net.TCPAddr:
+		return v.IP, nil
+	case *net.UDPAddr:
+		return v.IP, nil
+	default:
+		return nil, fmt.Errorf("unsupported address type: %T", addr)
+	}
+}
 
+func addrToNetIPaddr(addr net.Addr) (netip.Addr, error) {
+	net_IP, err := addrTo_net_IP(addr)
+	if err != nil {
+		return netip.Addr{}, err
+	}
 
-
-
-
-
-
-
-
-
-// // Function to reload bind9.service and named.service
-// func restart_dns() error {
-// 	dev_name := ""
-// 	wait_time := 0.0
-// 	wait_time_mul := 5.0
-// 	wait_time_def := rand.Float64() * 15
-//
-// 	hostname, err := os.Hostname()
-// 	if err != nil {
-// 		fmt.Println("cant get hostname. Error:", err)
-// 		wait_time = wait_time_def
-// 	} else {
-// 		spl := strings.Split(hostname, ".")
-// 		dev_name = spl[0]
-//
-// 		numericStr := ""
-// 		for _, char := range dev_name {
-// 			if (char >= '0' && char <= '9') || char == '.' {
-// 				numericStr += string(char)
-// 			}
-// 		}
-//
-// 		// Convert string to float64
-// 		num, err := strconv.ParseFloat(numericStr, 64)
-// 		if err != nil {
-// 			fmt.Println("Error converting string to float64:", err)
-// 			wait_time = wait_time_def
-// 		} else {
-// 			wait_time = (num-1) * wait_time_mul
-// 		}
-// 	}
-//
-// 	time.Sleep(time.Duration(wait_time * float64(time.Second)))
-//
-// 	// // Reload bind9.service
-// 	// err = exec.Command("systemctl", "restart", "bind9.service").Run()
-// 	// if err != nil {
-// 	//     return err
-// 	// }
-//
-//
-// 	// Reload named.service
-// 	err = exec.Command("systemctl", "restart", "named.service").Run()
-// 	if err != nil {
-// 		fmt.Println(err)
-// 	}
-// 	fmt.Println("reloading dnsmasq")
-// 	// err = exec.Command("systemctl", "reload", "dnsmasq.service").Run()
-// 	err = exec.Command("systemctl", "restart", "dnsmasq.service").Run()
-// 	if err != nil {
-// 		fmt.Println(err)
-// 	}
-//
-//
-// 	return nil
-// }
-
-
-
-
-
+	return netip.AddrFrom16([16]byte(net_IP.To16())), nil
+}
 
 
 
@@ -1190,125 +844,31 @@ func IPv6PrefixToReverseDNS(prefix net.IP, prefLen int, vlan uint64) string {
 
 
 // isULA checks if the given IP address is a Unique Local Address (ULA).
-func isULA(ip net.IP) bool {
+func isULA(ip netip.Addr) bool {
 	// ULA range is fc00::/7
-	ula := &net.IPNet{
-		IP:   net.ParseIP("fc00::"),
-		Mask: net.CIDRMask(7, 128),
+	ula, err := netip.ParsePrefix("fc00::/7")
+	if err != nil {
+
 	}
 	return ula.Contains(ip)
 }
 
 // isLinkLocal checks if the given IP address is a link-local address.
-func isLinkLocal(ip net.IP) bool {
+func isLinkLocal(ip netip.Addr) bool {
 	// Link-local range is fe80::/10
-	linkLocal := &net.IPNet{
-		IP:   net.ParseIP("fe80::"),
-		Mask: net.CIDRMask(10, 128),
+	linkLocal, err := netip.ParsePrefix("fe80::/10")
+	if err != nil {
+
 	}
 	return linkLocal.Contains(ip)
 }
 
 // isValidIPprefixAddress checks if an IP address is not link-local, not ULA, and not loopback.
-func isValidIPprefixAddress(ip net.IP) bool {
-	if ip == nil {
-		return false // Invalid IP address
-	}
-
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || !ip.IsGlobalUnicast() || ip.To4() != nil || isLinkLocal(ip) || isULA(ip) {
+func isValidIPprefixAddress(ip netip.Addr) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() || !ip.IsGlobalUnicast() || ip.Is4() || isLinkLocal(ip) || isULA(ip) {
 		return false
 	}
 
 	return true
 }
 
-
-// addrToIP converts a net.Addr to a net.IP if possible.
-func addrToIP(addr net.Addr) (net.IP, error) {
-	switch v := addr.(type) {
-	case *net.IPAddr:
-		return v.IP, nil
-	case *net.IPNet:
-		return v.IP, nil
-	case *net.TCPAddr:
-		return v.IP, nil
-	case *net.UDPAddr:
-		return v.IP, nil
-	default:
-		return nil, fmt.Errorf("unsupported address type: %T", addr)
-	}
-}
-
-// Function to get the current IPv6 prefix
-func getCurrentIPv6Prefix(interfaceName string) (string, error) {
-	// Specify the network interface name
-	// interfaceName := "eth0" // Change this to your desired interface name
-
-	// Get network interface
-	iface, err := net.InterfaceByName(interfaceName)
-	if err != nil {
-		return "", err
-	}
-
-	// Get addresses for the interface
-	addrs, err := iface.Addrs()
-	if err != nil {
-		return "", err
-	}
-
-	// Initialize variables to store the IPv6 prefix
-	var ipv6Prefix string
-
-	// Iterate over addresses to find the IPv6 prefix
-	var ip net.IP
-	for _, addr := range addrs {
-		// Check if it's an IPv6 address and not temporary
-		ip, err = addrToIP(addr)
-		if err != nil {
-			continue
-		}
-		if isValidIPprefixAddress(ip) {
-			ipnet, ok := addr.(*net.IPNet)
-			if !ok {
-				continue
-			}
-			ipv6Prefix = getIPv6Prefix(ipnet)
-			break
-		}
-	}
-
-	// If no IPv6 prefix found, return an error
-	if ipv6Prefix == "" {
-		return "", fmt.Errorf("no IPv6 prefix found")
-	}
-
-	return ipv6Prefix, nil
-}
-
-// Function to extract the IPv6 prefix from an IPNet object and pad it to /64 length
-func getIPv6Prefix(ipnet *net.IPNet) string {
-	// Get the network portion of the IP
-	network := ipnet.IP.Mask(ipnet.Mask)
-
-	// Convert the network portion to a string representation
-	ipv6Prefix := network.String()
-
-	// If the prefix length is less than 64, pad it with zeros
-	if len(ipv6Prefix) < len("xxxx:xxxx:xxxx:xxxx") {
-		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":") // Remove trailing ":"
-		padding := "0000:0000:0000:0000:0000:0000:0000:"   // Pad with zeros
-		ipv6Prefix += padding[len(ipv6Prefix):]          // Add padding to reach /64 length
-	}
-
-	// Ensure it ends with a single colon
-	if !strings.HasSuffix(ipv6Prefix, ":") {
-		ipv6Prefix += ":"
-	}
-
-	// Remove one colon until the character before the last is not a colon
-	for strings.HasSuffix(ipv6Prefix, "::") {
-		ipv6Prefix = strings.TrimSuffix(ipv6Prefix, ":")
-	}
-
-	return ipv6Prefix
-}
