@@ -198,8 +198,12 @@ func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
 			continue
 		}
 		// Call get_prefix function with interfaceName and vlan
-		replacement_ip := get_network_from_prefix(prefix, vlan)
-		repped = strings.ReplaceAll(repped, fullMatch, replacement_ip.Addr().String())
+		ip := get_network_from_prefix(prefix, vlan)
+		ipstr := strings.TrimSuffix(ip.Addr().String(), "::")
+		ipstr = strings.TrimSuffix(ipstr, ":")
+
+		replacement_ip := ipstr
+		repped = strings.ReplaceAll(repped, fullMatch, replacement_ip)
 		// fmt.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement_ip.Addr().String())
 	}
 
@@ -427,13 +431,18 @@ func replace_vars(content *[]byte, prefix *netip.Prefix) (string) {
 	if prefix == nil {
 		log.Fatal("prefix is nil")
 	}
+
+	ipstr := (*prefix).Addr().String()
+	ipstr = strings.TrimSuffix(ipstr, "::")
+	ipstr = strings.TrimSuffix(ipstr, ":")
+
 	rev_dns := IPv6PrefixToReverseDNS(*prefix, 64, 0)
 
 	fmt.Println("rep vars")
 	replacedContent := replaceIPv6Prefix(string(*content), *prefix)
 	fmt.Println("repped vars dyn vlan")
 
-	replacedContent = strings.ReplaceAll(replacedContent, "#@ipv6_prefix@#", (*prefix).Addr().String())
+	replacedContent = strings.ReplaceAll(replacedContent, "#@ipv6_prefix@#", ipstr)
 	fmt.Println("repped vars main")
 	replacedContent = strings.ReplaceAll(replacedContent, "#@ut_10@#", ut)
 	fmt.Println("repped vars ut10")
