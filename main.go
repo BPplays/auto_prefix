@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/netip"
 	"reflect"
+	"crypto/tls"
 
 	// "os/exec"
 	"encoding/json"
@@ -28,6 +29,9 @@ import (
 	"github.com/coreos/go-systemd/v22/dbus"
 	"github.com/seancfoley/ipaddress-go/ipaddr"
 	"gopkg.in/yaml.v3"
+
+	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
 
 	"github.com/BPplays/auto_prefix/source"
 )
@@ -329,7 +333,7 @@ func main() {
 		ut = get_dns_ut()
 
 		// Get the current IPv6 prefix
-		currentIPv6Prefix, err := get_prefix(config)
+		currentIPv6Prefix, err := get_prefix(config, false)
 		if err != nil {
 			fmt.Println("Error:", err)
 			return
@@ -599,7 +603,7 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 	return nil
 }
 
-func get_prefix(config Config) (netip.Prefix, error)  {
+func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 	var prefix netip.Prefix
 	var found_prefix bool = false
 
@@ -628,9 +632,19 @@ func get_prefix(config Config) (netip.Prefix, error)  {
 			prefix = netip.PrefixFrom(addr, prefix_len)
 
 		} else if tsource == source.Url {
-			resp, err := http.Get(config.Url)
+			tr := &http3.Transport{
+				TLSClientConfig: &tls.Config{},  // set a TLS client config, if desired
+				QUICConfig:      &quic.Config{}, // QUIC connection options
+			}
+			defer tr.Close()
+			client := &http.Client{
+				Transport: tr,
+			}
+
+			resp, err := client.Get(config.Url)
 			if err != nil {
-				log.Fatal(err)
+				log.Println(err)
+				continue
 			}
 			defer resp.Body.Close()
 
@@ -646,10 +660,12 @@ func get_prefix(config Config) (netip.Prefix, error)  {
 
 
 		if found_prefix {
-			log.Println("found new prefix")
-			updateIPv6Prefix(prefix)
+			log.Printf("found new prefix: %v\n", prefix.String())
+			if !noFile {
+				updateIPv6Prefix(prefix)
+			}
 			break
-		} else {
+		} else if !noFile {
 			log.Println("did not find new prefix")
 			prefix, err := readIPv6PrefixFromFile()
 			if err != nil {
