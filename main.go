@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -8,11 +9,11 @@ import (
 	"math"
 	"math/rand"
 	"net"
-	"os"
 	"net/http"
 	"net/netip"
+	"os"
 	"reflect"
-	"crypto/tls"
+	"bytes"
 
 	// "os/exec"
 	"encoding/json"
@@ -33,6 +34,8 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 
+	"text/template"
+
 	"github.com/BPplays/auto_prefix/source"
 )
 
@@ -50,12 +53,15 @@ const (
 )
 var (
 	Prefix_length = Prefix_length_default
+
+	errNilPrefix = errors.New("prefix is nil")
 )
 
 var prefixNotFound error = errors.New("no prefix found")
 
 var interfaceName = ""
 var ut string = ""
+
 
 type FileMapping struct {
 	From string `yaml:"from"`
@@ -180,6 +186,14 @@ func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end i
 	return netip.PrefixFrom(addr_output, prefix.Bits())
 }
 
+func getIpv6Subnet(prefix *netip.Prefix, vlan uint64) string {
+	// Call get_prefix function with interfaceName and vlan
+	ip := get_network_from_prefix(*prefix, vlan)
+	ipstr := strings.TrimSuffix(ip.Addr().String(), "::")
+	ipstr = strings.TrimSuffix(ipstr, ":")
+	return ipstr
+}
+
 func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
 	// Define the regular expression pattern
 	pattern := `#@ipv6_prefix_([0-9a-fA-F]+)@#`
@@ -201,10 +215,8 @@ func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
 			fmt.Println("Error converting VLAN number:", err)
 			continue
 		}
-		// Call get_prefix function with interfaceName and vlan
-		ip := get_network_from_prefix(prefix, vlan)
-		ipstr := strings.TrimSuffix(ip.Addr().String(), "::")
-		ipstr = strings.TrimSuffix(ipstr, ":")
+
+		ipstr := getIpv6Subnet(&prefix, vlan)
 
 		replacement_ip := ipstr
 		repped = strings.ReplaceAll(repped, fullMatch, replacement_ip)
@@ -431,29 +443,66 @@ func get_dns_ut() (string) {
 	return ut
 }
 
-func replace_vars(content *[]byte, prefix *netip.Prefix) (string) {
+func replace_vars(content *[]byte, prefix *netip.Prefix) (string, error) {
 	if prefix == nil {
-		log.Fatal("prefix is nil")
+		return "", errNilPrefix
 	}
 
-	ipstr := (*prefix).Addr().String()
-	ipstr = strings.TrimSuffix(ipstr, "::")
-	ipstr = strings.TrimSuffix(ipstr, ":")
-
+	ipstr := getIpv6Subnet(prefix, 0)
 	rev_dns := IPv6PrefixToReverseDNS(*prefix, 64, 0)
 
-	fmt.Println("rep vars")
-	replacedContent := replaceIPv6Prefix(string(*content), *prefix)
-	fmt.Println("repped vars dyn vlan")
+	prefixCache := make(map[string]string)
+	vars := map[string]interface{}{
+		"ut_10":  ut,
+		"ipv6_prefix":   ipstr,
+		"ipv6_revdns_prefix": rev_dns,
+	}
 
-	replacedContent = strings.ReplaceAll(replacedContent, "#@ipv6_prefix@#", ipstr)
-	fmt.Println("repped vars main")
-	replacedContent = strings.ReplaceAll(replacedContent, "#@ut_10@#", ut)
-	fmt.Println("repped vars ut10")
-	replacedContent = strings.ReplaceAll(replacedContent, "@::#@ipv6_revdns_prefix@#", rev_dns)
-	fmt.Println("repped vars reverse")
+    tpl := template.New("zonefile.tmpl").
+        Funcs(template.FuncMap{
+			"get_ipv6_subnet": func(vlanStr string) (string) {
+				if pref, exists := prefixCache[vlanStr]; exists {
+					return pref
+				}
+				vlan, err := strconv.ParseUint(vlanStr, 16, 64)
+				if err != nil {
+					// Handle conversion error
+					return "2001::db8"
+					// return "2001::db8", fmt.Errorf("Error converting VLAN number: %w", err)
+				}
 
-	return replacedContent
+				pref := getIpv6Subnet(prefix, vlan)
+				prefixCache[vlanStr] = pref
+
+				return pref
+			},
+		},
+	)
+
+    tpl, err := tpl.Parse(string(*content))
+    if err != nil {
+        return "", fmt.Errorf("error parsing template: %v", err)
+    }
+
+    var out bytes.Buffer
+    if err := tpl.Execute(&out, vars); err != nil {
+        return "", fmt.Errorf("template execution failed: %w", err)
+    }
+
+
+
+	// fmt.Println("rep vars")
+	// replacedContent := replaceIPv6Prefix(string(*content), *prefix)
+	// fmt.Println("repped vars dyn vlan")
+	//
+	// replacedContent = strings.ReplaceAll(replacedContent, "#@ipv6_prefix@#", ipstr)
+	// fmt.Println("repped vars main")
+	// replacedContent = strings.ReplaceAll(replacedContent, "#@ut_10@#", ut)
+	// fmt.Println("repped vars ut10")
+	// replacedContent = strings.ReplaceAll(replacedContent, "@::#@ipv6_revdns_prefix@#", rev_dns)
+	// fmt.Println("repped vars reverse")
+
+	return out.String(), nil
 }
 
 func restart_services(config Service) {
@@ -587,7 +636,10 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 			return err
 		}
 
-		replacedContent := replace_vars(&content, &prefix)
+		replacedContent, err := replace_vars(&content, &prefix)
+		if err != nil {
+			continue
+		}
 
 		err = os.WriteFile(file.To, []byte(replacedContent), 0644)
 		if err != nil {
