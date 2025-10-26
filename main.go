@@ -166,30 +166,30 @@ func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
 }
 
 
-func mix_prefix_ip(prefix netip.Prefix, suffix netip.Addr) netip.Prefix {
-	var addr_output netip.Addr
+func mixPrefixIP(prefix netip.Prefix, suffix netip.Addr) netip.Prefix {
+    prefixBits := prefix.Bits()
+    if prefixBits >= 128 {
+        return prefix
+    }
 
+    prefixBytes := prefix.Addr().As16()
+    suffixBytes := suffix.As16()
 
-	var prefixAddrBytes [16]byte
-	prefixAddrBytes = prefix.Addr().As16()
+    fullBytes := prefixBits / 8     // how many full bytes the prefix occupies
+    rem := prefixBits % 8           // leftover bits in the partial byte (0..7)
 
-	var addrBytes [16]byte
-	addrBytes = prefix.Addr().As16()
+    if rem == 0 {
+        copy(prefixBytes[fullBytes:], suffixBytes[fullBytes:])
+    } else {
+        mask := byte(0xFF) << uint(8-rem) // mask has top `rem` bits set
+        prefixBytes[fullBytes] = (prefixBytes[fullBytes] & mask) | (suffixBytes[fullBytes] & ^mask)
+        if fullBytes+1 <= 15 {
+            copy(prefixBytes[fullBytes+1:], suffixBytes[fullBytes+1:])
+        }
+    }
 
-	end := 128
-	start := prefix.Bits()
-	for i := end; i >= start; i-- {
-		if i == start {
-			break
-		}
-		bit := GetBit(addrBytes, i)
-		prefixAddrBytes = SetBit(prefixAddrBytes, i, bit)
-
-	}
-
-	addr_output = netip.AddrFrom16(prefixAddrBytes)
-
-	return netip.PrefixFrom(addr_output, prefix.Bits())
+    out := netip.AddrFrom16(prefixBytes)
+    return netip.PrefixFrom(out, prefixBits)
 }
 
 func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end int) netip.Prefix {
