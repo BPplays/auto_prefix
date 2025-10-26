@@ -166,14 +166,14 @@ func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
 }
 
 
-func mixPrefixIP(prefix netip.Prefix, suffix netip.Addr) netip.Prefix {
+func mixPrefixIP(prefix *netip.Prefix, suffix *netip.Addr) *netip.Prefix {
     prefixBits := prefix.Bits()
     if prefixBits >= 128 {
         return prefix
     }
 
-    prefixBytes := prefix.Addr().As16()
-    suffixBytes := suffix.As16()
+    prefixBytes := (*prefix).Addr().As16()
+    suffixBytes := (*suffix).As16()
 
     fullBytes := prefixBits / 8     // how many full bytes the prefix occupies
     rem := prefixBits % 8           // leftover bits in the partial byte (0..7)
@@ -189,7 +189,8 @@ func mixPrefixIP(prefix netip.Prefix, suffix netip.Addr) netip.Prefix {
     }
 
     out := netip.AddrFrom16(prefixBytes)
-    return netip.PrefixFrom(out, prefixBits)
+	outPrefix := netip.PrefixFrom(out, prefixBits)
+    return &outPrefix
 }
 
 func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end int) netip.Prefix {
@@ -488,7 +489,8 @@ func replace_vars(content *[]byte, prefix *netip.Prefix) (string, error) {
 	ipstr := getIpv6Subnet(prefix, 0)
 	rev_dns := IPv6PrefixToReverseDNS(*prefix, 64, 0)
 
-	prefixCache := make(map[string]string)
+	getIPv6SubnetCache := make(map[string]string)
+	mixPrefixIPCache := make(map[string]string)
 	vars := map[string]any{
 		"ut_10":  ut,
 		"ipv6_prefix":   ipstr,
@@ -498,7 +500,7 @@ func replace_vars(content *[]byte, prefix *netip.Prefix) (string, error) {
     tpl := template.New("zonefile.tmpl").
         Funcs(template.FuncMap{
 			"get_ipv6_subnet": func(vlanStr string) (string) {
-				if pref, exists := prefixCache[vlanStr]; exists {
+				if pref, exists := getIPv6SubnetCache[vlanStr]; exists {
 					return pref
 				}
 				vlan, err := strconv.ParseUint(vlanStr, 16, 64)
@@ -509,26 +511,26 @@ func replace_vars(content *[]byte, prefix *netip.Prefix) (string, error) {
 				}
 
 				pref := getIpv6Subnet(prefix, vlan)
-				prefixCache[vlanStr] = pref
+				getIPv6SubnetCache[vlanStr] = pref
 
 				return pref
 			},
 
-			"mix_prefix_ip": func(vlanStr string) (string) {
-				if pref, exists := prefixCache[vlanStr]; exists {
+			"mix_prefix_ip": func(ipStr string) (string) {
+				if pref, exists := mixPrefixIPCache[ipStr]; exists {
 					return pref
 				}
-				vlan, err := strconv.ParseUint(vlanStr, 16, 64)
+
+				ip, err := netip.ParseAddr(ipStr)
 				if err != nil {
-					// Handle conversion error
-					return "2001::db8"
-					// return "2001::db8", fmt.Errorf("Error converting VLAN number: %w", err)
+					return "2001::db8::"
 				}
 
-				pref := getIpv6Subnet(prefix, vlan)
-				prefixCache[vlanStr] = pref
+				mixed := mixPrefixIP(prefix, &ip)
+				mixedStr := (*mixed).Addr().String()
+				mixPrefixIPCache[ipStr] = mixedStr
 
-				return pref
+				return mixedStr
 			},
 		},
 	)
