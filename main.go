@@ -452,7 +452,7 @@ func replace_vars(content *[]byte, prefix *netip.Prefix) (string, error) {
 	rev_dns := IPv6PrefixToReverseDNS(*prefix, 64, 0)
 
 	prefixCache := make(map[string]string)
-	vars := map[string]interface{}{
+	vars := map[string]any{
 		"ut_10":  ut,
 		"ipv6_prefix":   ipstr,
 		"ipv6_revdns_prefix": rev_dns,
