@@ -138,6 +138,16 @@ func get_pd_size_file(pd_file string) (error, int) {
 
 }
 
+func GetBit(ip_bytes [16]byte, bit int) bool {
+	if bit < 1 || bit > 128 {
+		return false
+	}
+	byteIndex := (bit - 1) / 8
+	bitIndex := (bit - 1) % 8
+	mask := byte(1 << (7 - bitIndex))
+	return (ip_bytes[byteIndex] & mask) != 0
+}
+
 
 // SetBit sets or clears a specific bit in the IP address based on the value of setToOne.
 func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
@@ -153,6 +163,33 @@ func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
 	}
 
 	return ip_bytes
+}
+
+
+func mix_prefix_ip(prefix netip.Prefix, suffix netip.Addr) netip.Prefix {
+	var addr_output netip.Addr
+
+
+	var prefixAddrBytes [16]byte
+	prefixAddrBytes = prefix.Addr().As16()
+
+	var addrBytes [16]byte
+	addrBytes = prefix.Addr().As16()
+
+	end := 128
+	start := prefix.Bits()
+	for i := end; i >= start; i-- {
+		if i == start {
+			break
+		}
+		bit := GetBit(addrBytes, i)
+		prefixAddrBytes = SetBit(prefixAddrBytes, i, bit)
+
+	}
+
+	addr_output = netip.AddrFrom16(prefixAddrBytes)
+
+	return netip.PrefixFrom(addr_output, prefix.Bits())
 }
 
 func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end int) netip.Prefix {
@@ -461,6 +498,23 @@ func replace_vars(content *[]byte, prefix *netip.Prefix) (string, error) {
     tpl := template.New("zonefile.tmpl").
         Funcs(template.FuncMap{
 			"get_ipv6_subnet": func(vlanStr string) (string) {
+				if pref, exists := prefixCache[vlanStr]; exists {
+					return pref
+				}
+				vlan, err := strconv.ParseUint(vlanStr, 16, 64)
+				if err != nil {
+					// Handle conversion error
+					return "2001::db8"
+					// return "2001::db8", fmt.Errorf("Error converting VLAN number: %w", err)
+				}
+
+				pref := getIpv6Subnet(prefix, vlan)
+				prefixCache[vlanStr] = pref
+
+				return pref
+			},
+
+			"mix_prefix_ip": func(vlanStr string) (string) {
 				if pref, exists := prefixCache[vlanStr]; exists {
 					return pref
 				}
