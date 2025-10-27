@@ -189,11 +189,11 @@ func GetBit(ip_bytes [16]byte, bit int) bool {
 
 // SetBit sets or clears a specific bit in the IP address based on the value of setToOne.
 func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
-	// fmt.Println("bit:", bit)
+	// log.Println("bit:", bit)
 	byteIndex := int(math.Ceil(float64(bit) / (8))+1)  // Calculate the byte position
 	bitIndex := (bit-1) % 8   // Calculate the bit position within that byte
 
-	// fmt.Printf("biti %v, bytei %v\n", bitIndex, byteIndex)
+	// log.Printf("biti %v, bytei %v\n", bitIndex, byteIndex)
 	if setToOne {
 		ip_bytes[byteIndex] |= 1 << (7 - bitIndex) // Set the bit to 1
 	} else {
@@ -238,9 +238,9 @@ func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end i
 
 	var addr_bytes [16]byte
 	addr_bytes = prefix.Addr().As16()
-	// fmt.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n\n\n", prefix.Addr().String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
+	// log.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n\n\n", prefix.Addr().String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
 
-	// fmt.Printf("set bits: start: %v, end: %v\n", start, end)
+	// log.Printf("set bits: start: %v, end: %v\n", start, end)
 	for i := end; i >= start; i-- {
 		if i == start {
 			break
@@ -249,16 +249,16 @@ func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end i
 		subnet_bit_pos := (-i) + end
 		bit := (int(subnet_uint64) >> subnet_bit_pos) & 1
 		addr_sl = SetBit(addr_bytes, i, bit == 1)
-		// fmt.Printf("output nonfin: %v\n\n output_nonfin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_sl))
-		// fmt.Printf("Bit %d: %d\n", i, bit)
+		// log.Printf("output nonfin: %v\n\n output_nonfin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_sl))
+		// log.Printf("Bit %d: %d\n", i, bit)
 	}
 
 	addr_output = netip.AddrFrom16(addr_sl)
 
-	// fmt.Printf("output fin: %v\n\n output_fin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.As16()))
-	// fmt.Println("")
-	// fmt.Println("")
-	// fmt.Println("")
+	// log.Printf("output fin: %v\n\n output_fin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.As16()))
+	// log.Println("")
+	// log.Println("")
+	// log.Println("")
 	return netip.PrefixFrom(addr_output, prefix.Bits())
 }
 
@@ -274,7 +274,7 @@ func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
 	// Define the regular expression pattern
 	pattern := `#@ipv6_prefix_([0-9a-fA-F]+)@#`
 	re := regexp.MustCompile(pattern)
-	// fmt.Println("starting regex conv")
+	// log.Println("starting regex conv")
 
 	// Find all matches in the content
 	matches := re.FindAllStringSubmatch(content, -1)
@@ -288,7 +288,7 @@ func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
 		vlan, err = strconv.ParseUint(vlanStr, 16, 64)
 		if err != nil {
 			// Handle conversion error
-			fmt.Println("Error converting VLAN number:", err)
+			log.Println("Error converting VLAN number:", err)
 			continue
 		}
 
@@ -296,7 +296,7 @@ func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
 
 		replacement_ip := ipstr
 		repped = strings.ReplaceAll(repped, fullMatch, replacement_ip)
-		// fmt.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement_ip.Addr().String())
+		// log.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement_ip.Addr().String())
 	}
 
 	return repped
@@ -394,7 +394,7 @@ func main() {
 		log.SetOutput(&lumberjack.Logger{
 			Filename:   *logFile,
 			MaxSize:    5,    // megabytes
-			MaxBackups: 3,    // keep up to 3 old log files
+			MaxBackups: 3,    // keep up to n old log files
 			MaxAge:     28,   // days
 		})
 	}
@@ -409,14 +409,14 @@ func main() {
 	var sleep_ut int64
 
 
-	fmt.Println("starting program")
-	// fmt.Println("using if:", interfaceName)
+	log.Println("starting program")
+	// log.Println("using if:", interfaceName)
 
 
 
 	// Start an infinite loop
 	for {
-		fmt.Println("starting loop")
+		log.Println("starting loop")
 		err := get_interfaceName_file()
 		if err != nil {
 			if interfaceName == "" {
@@ -449,12 +449,12 @@ func main() {
 
 		// // Print the parsed configurations
 		// for _, config := range services {
-		// 	fmt.Printf("Name: %s\n", config.Name)
-		// 	fmt.Printf("Files: %v\n", config.Files)
-		// 	fmt.Printf("Restart Commands: %v\n", config.RestartCmds)
-		// 	fmt.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
-		// 	fmt.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
-		// 	fmt.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
+		// 	log.Printf("Name: %s\n", config.Name)
+		// 	log.Printf("Files: %v\n", config.Files)
+		// 	log.Printf("Restart Commands: %v\n", config.RestartCmds)
+		// 	log.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
+		// 	log.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
+		// 	log.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
 		// }
 
 
@@ -463,43 +463,43 @@ func main() {
 		// Get the current IPv6 prefix
 		currentIPv6Prefix, err := get_prefix(config, false)
 		if err != nil {
-			fmt.Println("Error:", err)
+			log.Println("Error:", err)
 			return
 		}
 
 
 		// If the current prefix is different from the last one, update the zone files and reload services
 		if currentIPv6Prefix != lastIPv6Prefix {
-			fmt.Print("\n\n\n\n")
-			fmt.Println(strings.Repeat("=", 50))
-			fmt.Println(strings.Repeat("=", 50))
-			fmt.Print("\n")
+			log.Print("\n\n\n\n")
+			log.Println(strings.Repeat("=", 50))
+			log.Println(strings.Repeat("=", 50))
+			log.Print("\n")
 
-			fmt.Printf("slept until: %v\n\n", sleep_ut)
-			fmt.Printf("prefix: %v\n", currentIPv6Prefix)
+			log.Printf("slept until: %v\n\n", sleep_ut)
+			log.Printf("prefix: %v\n", currentIPv6Prefix)
 
 
 			// err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
 			// if err != nil {
-			// 	fmt.Println("Error:", err)
+			// 	log.Println("Error:", err)
 			// 	return
 			// }
 			// err = loadAndSaveNamedConf(currentIPv6Prefix)
 			// if err != nil {
-			// 	fmt.Println("Error:", err)
+			// 	log.Println("Error:", err)
 			// 	return
 			// }
 			//
 			// err = loadAndSaveDnsmasqConf(currentIPv6Prefix, currentIPv6Prefix_str)
 			// if err != nil {
-			// 	fmt.Println("Error:", err)
+			// 	log.Println("Error:", err)
 			// 	return
 			// }
 
 			for _, service := range services {
 				err := repSaveFileAndFolder(service, currentIPv6Prefix)
 				if err != nil {
-					fmt.Println("Error:", err)
+					log.Println("Error:", err)
 					// return
 				}
 
@@ -508,16 +508,16 @@ func main() {
 
 			// err = restart_dns()
 			// if err != nil {
-			// 	fmt.Println("Error:", err)
+			// 	log.Println("Error:", err)
 			// 	return
 			// }
 
 			lastIPv6Prefix = currentIPv6Prefix
-			fmt.Printf("Files updated successfully.\n\n")
+			log.Printf("Files updated successfully.\n\n")
 
 
-			fmt.Println(strings.Repeat("=", 50))
-			fmt.Println(strings.Repeat("=", 50))
+			log.Println(strings.Repeat("=", 50))
+			log.Println(strings.Repeat("=", 50))
 		}
 
 		// Sleep for the specified interval before checking again
@@ -646,16 +646,16 @@ func replace_vars(
 
 
 
-	// fmt.Println("rep vars")
+	// log.Println("rep vars")
 	// replacedContent := replaceIPv6Prefix(string(*content), *prefix)
-	// fmt.Println("repped vars dyn vlan")
+	// log.Println("repped vars dyn vlan")
 	//
 	// replacedContent = strings.ReplaceAll(replacedContent, "#@ipv6_prefix@#", ipstr)
-	// fmt.Println("repped vars main")
+	// log.Println("repped vars main")
 	// replacedContent = strings.ReplaceAll(replacedContent, "#@ut_10@#", ut)
-	// fmt.Println("repped vars ut10")
+	// log.Println("repped vars ut10")
 	// replacedContent = strings.ReplaceAll(replacedContent, "@::#@ipv6_revdns_prefix@#", rev_dns)
-	// fmt.Println("repped vars reverse")
+	// log.Println("repped vars reverse")
 
 	return out.String(), nil
 }
@@ -734,7 +734,7 @@ func restart_services(config Service) {
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		fmt.Println("cant get hostname. Error:", err)
+		log.Println("cant get hostname. Error:", err)
 		wait_time = wait_time_def
 	} else {
 		spl := strings.Split(hostname, ".")
@@ -750,7 +750,7 @@ func restart_services(config Service) {
 		// Convert string to float64
 		num, err := strconv.ParseFloat(numericStr, 64)
 		if err != nil {
-			fmt.Println("Error converting string to float64:", err)
+			log.Println("Error converting string to float64:", err)
 			wait_time = wait_time_def
 		} else {
 			wait_time = (num-1) * wait_time_mul
@@ -832,7 +832,7 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 	}
 
 	for _, file := range allFiles {
-		fmt.Printf("reading: %v\n", file.From)
+		log.Printf("reading: %v\n", file.From)
 		content, err := os.ReadFile(file.From)
 		if err != nil {
 			return err
@@ -848,7 +848,7 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 			return err
 		}
 
-		fmt.Printf("saving: %v\n", file.To)
+		log.Printf("saving: %v\n", file.To)
 
 		return nil
 
@@ -983,7 +983,7 @@ func get_addr_from_if(interfaceName string) (netip.Addr, error) {
 		if isValidIPprefixAddress(ip) {
 			p := netip.PrefixFrom(ip, Prefix_length)
 			ipv6Prefix = &p
-			fmt.Printf("ipnet: %v\n", ipv6Prefix.Addr().String())
+			log.Printf("ipnet: %v\n", ipv6Prefix.Addr().String())
 
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
 			found_addr = true
@@ -1036,7 +1036,7 @@ func updateIPv6Prefix(newPrefix netip.Prefix) error {
 	var no_stored bool
 	storedPrefix, err := readIPv6PrefixFromFile()
 	if err != nil {
-		fmt.Println("can't read prefix", err)
+		log.Println("can't read prefix", err)
 		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix})
 	}
 
@@ -1049,11 +1049,11 @@ func updateIPv6Prefix(newPrefix netip.Prefix) error {
 
 	// If no prefix exists or the prefix is different, write new one
 	if no_stored || *storedPrefix != newPrefix {
-		fmt.Println("Updating IPv6 prefix to:", newPrefix.String())
+		log.Println("Updating IPv6 prefix to:", newPrefix.String())
 		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix})
 	}
 
-	fmt.Println("IPv6 prefix is unchanged.")
+	log.Println("IPv6 prefix is unchanged.")
 	return nil
 }
 
