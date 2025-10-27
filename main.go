@@ -86,6 +86,7 @@ type Service struct {
 	RestartSystemdServices []string    `yaml:"restart_systemd_services"`
 	RestartTimeHost      float64           `yaml:"restart_time_host"`
 	RestartTimeout      int           `yaml:"restart_timeout"`
+	Vars      map[string]any           `yaml:"vars"`
 }
 
 func sprintBytesAsBinary(data interface{}) (string) {
@@ -481,7 +482,25 @@ func get_dns_ut() (string) {
 	return ut
 }
 
-func replace_vars(content *[]byte, prefix *netip.Prefix) (string, error) {
+func appendVarMap(a *map[string]any, b *map[string]any) *map[string]any {
+	out := make(map[string]any)
+
+	if a != nil {
+		for k, v := range *a { out[k] = v }
+	}
+
+	if b != nil {
+		for k, v := range *b { out[k] = v }
+	}
+
+	return &out
+}
+
+func replace_vars(
+	content *[]byte,
+	prefix *netip.Prefix,
+	service Service,
+) (string, error) {
 	if prefix == nil {
 		return "", errNilPrefix
 	}
@@ -495,7 +514,10 @@ func replace_vars(content *[]byte, prefix *netip.Prefix) (string, error) {
 		"ut_10":  ut,
 		"ipv6_prefix":   ipstr,
 		"ipv6_revdns_prefix": rev_dns,
+		"pd_size": (*prefix).Bits,
 	}
+
+	vars = *appendVarMap(&vars, &service.Vars)
 
     tpl := template.New("zonefile.tmpl").
         Funcs(template.FuncMap{
@@ -692,7 +714,7 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 			return err
 		}
 
-		replacedContent, err := replace_vars(&content, &prefix)
+		replacedContent, err := replace_vars(&content, &prefix, service)
 		if err != nil {
 			continue
 		}
