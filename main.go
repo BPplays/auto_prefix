@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"io/fs"
 	"log"
@@ -13,7 +15,7 @@ import (
 	"net/netip"
 	"os"
 	"reflect"
-	"bytes"
+	"runtime"
 
 	// "os/exec"
 	"encoding/json"
@@ -37,17 +39,24 @@ import (
 	"text/template"
 
 	"github.com/BPplays/auto_prefix/source"
+	"github.com/sevlyar/go-daemon"
+	"golang.org/x/sys/unix"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-const (
+var (
 	configFile     = "/etc/auto_prefix/config.yml"
 	serviceDir = "/etc/auto_prefix/config.d"
 	prefix_store = "/etc/auto_prefix/prefix.json"
+	if_file = "/etc/main_interface"
+	pd_file = "/etc/pd_size"
+)
+
+const (
+	progName = "auto_prefix"
 	Prefix_length_default = 56
 	prefix_full_subnet_len = 64
 	restartMode       = "replace" // or "force-reload"
-	if_file = "/etc/main_interface"
-	pd_file = "/etc/pd_size"
 	checkInterval  = 5 * time.Second
 
 )
@@ -82,11 +91,32 @@ type Service struct {
 	Name                 string        `yaml:"name"`
 	Files                []FileMapping `yaml:"files"`
 	Folders              []FileMapping `yaml:"folders"`
-	RestartCmds          []string      `yaml:"restart_cmds"`
+	RestartCmds          [][]string      `yaml:"restart_cmds"`
 	RestartSystemdServices []string    `yaml:"restart_systemd_services"`
+	RestartFreebsdServices []string    `yaml:"restart_freebsd_services"`
 	RestartTimeHost      float64           `yaml:"restart_time_host"`
 	RestartTimeout      int           `yaml:"restart_timeout"`
 	Vars      map[string]any           `yaml:"vars"`
+}
+
+func setEtcDirs() {
+	var etcBase string
+
+	switch strings.ToLower(runtime.GOOS) {
+	case "linux":
+	default:
+		etcBase = "/etc/"
+	case "freebsd":
+		etcBase = "/usr/local/etc/"
+
+	}
+
+
+	configFile     = filepath.Join(etcBase, "auto_prefix/config.yml")
+	serviceDir = filepath.Join(etcBase, "auto_prefix/config.d")
+	prefix_store = filepath.Join(etcBase, "auto_prefix/prefix.json")
+	if_file = filepath.Join(etcBase, "main_interface")
+	pd_file = filepath.Join(etcBase, "pd_size")
 }
 
 func sprintBytesAsBinary(data interface{}) (string) {
@@ -325,6 +355,46 @@ func parseServiceFile(filePath string) ([]Service, error) {
 
 
 func main() {
+
+	daemonFlag := flag.Bool("d", false, "run as daemon")
+	pidFile := flag.String("pid", fmt.Sprintf("/var/run/%v.pid", progName), "PID file path")
+	logFile := flag.String("log", fmt.Sprintf("/var/log/%v.log", progName), "log file path for rotated logs")
+	niceness := flag.Int("nice", 5, "the niceness to use for the proc")
+
+	flag.Parse()
+
+
+	if *daemonFlag {
+		cntxt := &daemon.Context{
+			PidFileName: *pidFile,
+			PidFilePerm: 0644,
+			LogFileName: *logFile,
+			LogFilePerm: 0640,
+			WorkDir:     "./",
+			Umask:       027,
+			Args:        os.Args,
+		}
+		d, err := cntxt.Reborn()
+		if err != nil {
+			log.Fatalf("unable to daemonize: %v", err)
+		}
+		if d != nil {
+			return
+		}
+		defer cntxt.Release()
+
+		// Configure log rotation
+		log.SetOutput(&lumberjack.Logger{
+			Filename:   *logFile,
+			MaxSize:    5,    // megabytes
+			MaxBackups: 3,    // keep up to 3 old log files
+			MaxAge:     28,   // days
+		})
+	}
+
+	if err := unix.Setpriority(unix.PRIO_PROCESS, 0, *niceness); err != nil {
+		log.Printf("warning: failed to set priority: %v", err)
+	}
 	var lastIPv6Prefix netip.Prefix = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
 
 	var sleep_sec float64
@@ -1028,5 +1098,9 @@ func isValidIPprefixAddress(ip netip.Addr) bool {
 	}
 
 	return true
+}
+
+func init() {
+	setEtcDirs()
 }
 

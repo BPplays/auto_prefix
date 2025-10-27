@@ -14,9 +14,11 @@ require (
 require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/seancfoley/bintree v1.3.1 // indirect
+	github.com/sevlyar/go-daemon v0.1.6 // indirect
 	golang.org/x/crypto v0.43.0 // indirect
 	golang.org/x/mod v0.29.0 // indirect
 	golang.org/x/net v0.46.0 // indirect
@@ -25,4 +27,5 @@ require (
 	golang.org/x/text v0.30.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
