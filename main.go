@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"os/exec"
 	"reflect"
 	"runtime"
 
@@ -29,7 +30,6 @@ import (
 
 	"context"
 
-	"github.com/coreos/go-systemd/v22/dbus"
 	"github.com/seancfoley/ipaddress-go/ipaddr"
 	"gopkg.in/yaml.v3"
 
@@ -63,7 +63,9 @@ const (
 var (
 	Prefix_length = Prefix_length_default
 
-	errNilPrefix = errors.New("prefix is nil")
+	ErrNilPrefix = errors.New("prefix is nil")
+	ErrStdErrNotEmpty = errors.New("stderr is not empty")
+
 )
 
 var prefixNotFound error = errors.New("no prefix found")
@@ -92,8 +94,13 @@ type Service struct {
 	Files                []FileMapping `yaml:"files"`
 	Folders              []FileMapping `yaml:"folders"`
 	RestartCmds          [][]string      `yaml:"restart_cmds"`
+
+	SystemdEnable bool    `yaml:"systemd_enable"`
 	RestartSystemdServices []string    `yaml:"restart_systemd_services"`
+
+	FreebsdServiceEnable bool    `yaml:"freebsd_service_enable"`
 	RestartFreebsdServices []string    `yaml:"restart_freebsd_services"`
+
 	RestartTimeHost      float64           `yaml:"restart_time_host"`
 	RestartTimeout      int           `yaml:"restart_timeout"`
 	Vars      map[string]any           `yaml:"vars"`
@@ -572,7 +579,7 @@ func replace_vars(
 	service Service,
 ) (string, error) {
 	if prefix == nil {
-		return "", errNilPrefix
+		return "", ErrNilPrefix
 	}
 
 	ipstr := getIpv6Subnet(prefix, 0)
@@ -653,6 +660,67 @@ func replace_vars(
 	return out.String(), nil
 }
 
+
+func restartFreebsdServices(ctx context.Context, config Service) ([]error) {
+	var errs []error
+
+	if strings.ToLower(runtime.GOOS) == "freebsd" {
+		errs = append(errs, errors.ErrUnsupported)
+		return errs
+	}
+
+
+	for _, target := range config.RestartFreebsdServices {
+		var outBuf, errBuf bytes.Buffer
+		cmd := exec.CommandContext(ctx, "service", target, "restart")
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		err := cmd.Run()
+		_ = outBuf.String()
+		errStr := errBuf.String()
+		if err != nil {
+			if len(strings.TrimSpace(errStr)) >= 1 {
+				err = ErrStdErrNotEmpty
+			}
+		}
+
+		errs = append(errs, err)
+	}
+
+	return errs
+}
+
+func runRestartCmds(ctx context.Context, config Service) ([]error) {
+	var errs []error
+
+	for _, target := range config.RestartCmds {
+		var outBuf, errBuf bytes.Buffer
+
+		cmd := exec.CommandContext(
+			ctx,
+			target[0],
+			target[1:]...,
+		)
+		cmd.Stdout = &outBuf
+		cmd.Stderr = &errBuf
+
+		err := cmd.Run()
+		_ = outBuf.String()
+		errStr := errBuf.String()
+		if err != nil {
+			if len(strings.TrimSpace(errStr)) >= 1 {
+				err = ErrStdErrNotEmpty
+			}
+		}
+
+		errs = append(errs, err)
+	}
+
+	return errs
+}
+
+
 func restart_services(config Service) {
 
 	if config.RestartTimeout <= 0 {
@@ -691,60 +759,46 @@ func restart_services(config Service) {
 
 	time.Sleep(time.Duration(wait_time * float64(time.Second)))
 
-	for _, targetSystemdUnit := range config.RestartSystemdServices {
-		ctx := context.Background()
-		// Connect to systemd
-		// Specifically this will look DBUS_SYSTEM_BUS_ADDRESS environment variable
-		// For example: `unix:path=/run/dbus/system_bus_socket`
-		systemdConnection, err := dbus.NewSystemConnectionContext(ctx)
-		if err != nil {
-			fmt.Printf("Failed to connect to systemd: %v\n", err)
-			panic(err)
-		}
-		defer systemdConnection.Close()
-
-		listOfUnits, err := systemdConnection.ListUnitsContext(ctx)
-		if err != nil {
-			fmt.Printf("Failed to list units: %v\n", err)
-		}
-
-		found := false
-		// targetUnit := dbus.UnitStatus{}
-		for _, unit := range listOfUnits {
-			if unit.Name == targetSystemdUnit {
-				fmt.Printf("Found systemd unit %s\n", targetSystemdUnit)
-				found = true
-				// targetUnit = unit
-				break
+	ctx := context.Background()
+	if config.SystemdEnable {
+		errs := restartSystemdServices(ctx, config)
+		for _, err := range errs {
+			switch err {
+			default:
+				log.Printf("systemd err: %v", err)
+			case nil:
+			case errors.ErrUnsupported:
 			}
-		}
-		if !found {
-			fmt.Printf("Expected systemd unit %s not found\n", targetSystemdUnit)
-		}
 
-		completedRestartCh := make(chan string)
-		jobID, err := systemdConnection.RestartUnitContext(
-			ctx,
-			targetSystemdUnit,
-			restartMode,
-			completedRestartCh,
-		)
-
-		if err != nil {
-			fmt.Printf("Failed to restart unit: %v\n", err)
-			panic(err)
 		}
-		fmt.Printf("Restart job id: %d\n", jobID)
-
-		// Wait for the restart to complete
-		select {
-		case <-completedRestartCh:
-			fmt.Printf("Restart job completed for unit: %s\n", targetSystemdUnit)
-		case <-time.After(time.Duration(config.RestartTimeout) * time.Second):
-			fmt.Printf("Timed out waiting for restart job to complete for unit: %s\n", targetSystemdUnit)
-		}
-
 	}
+
+	if config.FreebsdServiceEnable {
+		errs := restartFreebsdServices(ctx, config)
+		for _, err := range errs {
+			switch err {
+			default:
+				log.Printf("freebsd service err: %v", err)
+			case nil:
+			case errors.ErrUnsupported:
+			}
+
+		}
+	}
+
+	if len(config.RestartCmds) > 0 {
+		errs := runRestartCmds(ctx, config)
+		for _, err := range errs {
+			switch err {
+			default:
+				log.Printf("freebsd service err: %v", err)
+			case nil:
+			case errors.ErrUnsupported:
+			}
+
+		}
+	}
+
 }
 
 func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
