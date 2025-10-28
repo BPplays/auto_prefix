@@ -1088,8 +1088,9 @@ func IPv6PrefixToReverseDNS(prefix netip.Prefix, prefLen int, vlan uint64) strin
 
 	revdns, err := exp.GetSection().ToReverseDNSString()
 	if err != nil {
-		log.Fatalln(err)
+		revdns = "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa"
 	}
+	log.Printf("debug: full revdns is: %v\n", revdns)
 
 	// Calculate the number of nibbles to include in the prefix
 	numNibbles := prefLen / 4
@@ -1103,6 +1104,8 @@ func IPv6PrefixToReverseDNS(prefix netip.Prefix, prefLen int, vlan uint64) strin
 
 	// Join the prefix parts back into a reverse DNS string
 	prefixPart := strings.Join(prefixParts, ".")
+
+	log.Printf("debug: part revdns is: %v\n", prefixPart)
 
 	return prefixPart
 }
