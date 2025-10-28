@@ -825,13 +825,15 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 
 		entries, err := os.ReadDir(folder.From)
 		if err != nil {
-			return err
+			log.Printf("error replacing vars: %v\n", err)
+			continue
 		}
 		files := make([]fs.FileInfo, 0, len(entries))
 		for _, entry := range entries {
 			info, err := entry.Info()
 			if err != nil {
-				return err
+				log.Printf("error replacing vars: %v\n", err)
+				continue
 			}
 			files = append(files, info)
 		}
