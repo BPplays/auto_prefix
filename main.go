@@ -619,8 +619,8 @@ func replace_vars(
 				vlan, err := strconv.ParseUint(vlanStr, 16, 64)
 				if err != nil {
 					// Handle conversion error
-					return "2001::db8"
-					// return "2001::db8", fmt.Errorf("Error converting VLAN number: %w", err)
+					return "2001:db8"
+					// return "2001:db8", fmt.Errorf("Error converting VLAN number: %w", err)
 				}
 
 				pref := getIpv6Subnet(prefix, vlan)
@@ -636,7 +636,7 @@ func replace_vars(
 
 				ip, err := netip.ParseAddr(ipStr)
 				if err != nil {
-					return "2001::db8::"
+					return "2001:db8::"
 				}
 
 				mixed := mixPrefixIP(prefix, &ip)
