@@ -857,6 +857,7 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 
 		replacedContent, err := replace_vars(&content, &prefix, service)
 		if err != nil {
+			log.Printf("error replacing vars: %v\n", err)
 			continue
 		}
 
