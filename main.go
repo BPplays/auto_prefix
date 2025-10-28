@@ -1081,10 +1081,7 @@ func updateIPv6Prefix(newPrefix netip.Prefix) error {
 func IPv6PrefixToReverseDNS(prefix netip.Prefix, prefLen int, vlan uint64) string {
 	prefix_vlan := get_network_from_prefix(prefix, vlan)
 
-	exp, err := ipaddr.NewIPAddressFromNetNetIPPrefix(prefix_vlan)
-	if err != nil {
-		return ""
-	}
+	exp := ipaddr.NewIPAddressFromNetNetIPAddr(prefix_vlan.Addr())
 
 	revdns, err := exp.GetSection().ToReverseDNSString()
 	if err != nil {
