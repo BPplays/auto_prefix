@@ -127,7 +127,12 @@ func setEtcDirs() {
 }
 
 func logTitleln(v ...any) {
-	log.Println(fmt.Sprintf("=== %v ===", v))
+	var strs []string
+	for _, an := range v {
+		strs = append(strs, fmt.Sprint(an))
+	}
+
+	log.Println(fmt.Sprintf("=== %v ===", strings.Join(strs, " ")))
 }
 
 func sprintBytesAsBinary(data interface{}) (string) {
