@@ -128,6 +128,7 @@ func setEtcDirs() {
 
 func logTitleln(v ...any) {
 	var strs []string
+
 	for _, an := range v {
 		strs = append(strs, fmt.Sprint(an))
 	}
