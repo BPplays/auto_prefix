@@ -587,6 +587,27 @@ func appendVarMap(a *map[string]any, b *map[string]any) *map[string]any {
 	return &out
 }
 
+func looseParseSuffix(ipStr string) (netip.Addr, error) {
+	var ip netip.Addr
+	var firstErr error
+
+	for _, prepend := range []string{"", ":", "::"} {
+		var err error
+
+		ip, err = netip.ParseAddr(fmt.Sprintf("%v%v", prepend, ipStr))
+		if err == nil {
+			return ip, nil
+		} else {
+			if firstErr == nil {
+				firstErr = err
+			}
+		}
+
+	}
+
+	return ip, firstErr
+}
+
 func replace_vars(
 	content *[]byte,
 	prefix *netip.Prefix,
