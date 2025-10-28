@@ -655,7 +655,7 @@ func replace_vars(
 					return pref
 				}
 
-				ip, err := netip.ParseAddr(ipStr)
+				ip, err := looseParseSuffix(ipStr)
 				if err != nil {
 					return "2001:db8::"
 				}
