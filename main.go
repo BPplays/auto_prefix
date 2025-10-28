@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"maps"
 	"math"
 	"math/rand"
 	"net"
@@ -576,13 +577,8 @@ func get_dns_ut() (string) {
 func appendVarMap(a *map[string]any, b *map[string]any) *map[string]any {
 	out := make(map[string]any)
 
-	if a != nil {
-		for k, v := range *a { out[k] = v }
-	}
-
-	if b != nil {
-		for k, v := range *b { out[k] = v }
-	}
+	maps.Copy(out, *a)
+	maps.Copy(out, *b)
 
 	return &out
 }
