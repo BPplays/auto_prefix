@@ -367,6 +367,7 @@ func main() {
 	pidFile := flag.String("pid", fmt.Sprintf("/var/run/%v.pid", progName), "PID file path")
 	logFile := flag.String("log", fmt.Sprintf("/var/log/%v.log", progName), "log file path for rotated logs")
 	niceness := flag.Int("nice", 5, "the niceness to use for the proc")
+	skipIF := flag.Bool("skip_if", false, "skip getting if not needed")
 
 	flag.Parse()
 
@@ -417,8 +418,10 @@ func main() {
 	// Start an infinite loop
 	for {
 		log.Println("starting loop")
+		if conf
 		err := get_interfaceName_file()
 		if err != nil {
+			log.Printf("get IF err: %v\n", err)
 			if interfaceName == "" {
 				time.Sleep(2 * time.Second)
 				continue
