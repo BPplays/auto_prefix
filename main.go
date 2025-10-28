@@ -126,6 +126,10 @@ func setEtcDirs() {
 	pd_file = filepath.Join(etcBase, "pd_size")
 }
 
+func logTitleln(v ...any) {
+	log.Println(fmt.Sprintf("=== %v ===", v))
+}
+
 func sprintBytesAsBinary(data interface{}) (string) {
 	v := reflect.ValueOf(data)
 	kind := v.Kind()
@@ -726,6 +730,7 @@ func runRestartCmds(ctx context.Context, config Service) ([]error) {
 
 
 func restart_services(config Service) {
+	logTitleln("Restarting services")
 
 	if config.RestartTimeout <= 0 {
 		config.RestartTimeout = 10
@@ -754,7 +759,7 @@ func restart_services(config Service) {
 		// Convert string to float64
 		num, err := strconv.ParseFloat(numericStr, 64)
 		if err != nil {
-			log.Println("Error converting string to float64:", err)
+			// log.Println("Error converting string to float64:", err)
 			wait_time = wait_time_def
 		} else {
 			wait_time = (num-1) * wait_time_mul
@@ -807,6 +812,8 @@ func restart_services(config Service) {
 
 func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 	var allFiles []FileMapping = service.Files
+
+	logTitleln("Reading and saving files")
 
 	for _, folder := range service.Folders {
 
