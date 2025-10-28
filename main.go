@@ -372,173 +372,6 @@ func parseServiceFile(filePath string) ([]Service, error) {
 }
 
 
-func main() {
-
-	daemonFlag := flag.Bool("d", false, "run as daemon")
-	pidFile := flag.String("pid", fmt.Sprintf("/var/run/%v.pid", progName), "PID file path")
-	logFile := flag.String("log", fmt.Sprintf("/var/log/%v.log", progName), "log file path for rotated logs")
-	niceness := flag.Int("nice", 5, "the niceness to use for the proc")
-	skipIF := flag.Bool("skip_interface", false, "skip getting if not needed")
-
-	flag.Parse()
-
-
-	if *daemonFlag {
-		cntxt := &daemon.Context{
-			PidFileName: *pidFile,
-			PidFilePerm: 0644,
-			LogFileName: *logFile,
-			LogFilePerm: 0640,
-			WorkDir:     "./",
-			Umask:       027,
-			Args:        os.Args,
-		}
-		d, err := cntxt.Reborn()
-		if err != nil {
-			log.Fatalf("unable to daemonize: %v", err)
-		}
-		if d != nil {
-			return
-		}
-		defer cntxt.Release()
-
-		// Configure log rotation
-		log.SetOutput(&lumberjack.Logger{
-			Filename:   *logFile,
-			MaxSize:    5,    // megabytes
-			MaxBackups: 3,    // keep up to n old log files
-			MaxAge:     28,   // days
-		})
-	}
-
-	if err := unix.Setpriority(unix.PRIO_PROCESS, 0, *niceness); err != nil {
-		log.Printf("warning: failed to set priority: %v", err)
-	}
-	var lastIPv6Prefix netip.Prefix = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
-
-	var sleep_sec float64
-	var sleep_dur time.Duration
-	var sleep_ut int64
-
-
-	log.Println("starting program")
-	// log.Println("using if:", interfaceName)
-
-
-
-	// Start an infinite loop
-	for {
-		log.Println("starting loop")
-		if !(*skipIF) {
-			err := get_interfaceName_file()
-			if err != nil {
-				log.Printf("get IF err: %v\n", err)
-				if interfaceName == "" {
-					time.Sleep(2 * time.Second)
-					continue
-				}
-			}
-		}
-
-		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
-
-		// if sleep_sec >= checkInterval.Seconds() {
-		// 	sleep_sec = 0
-		// }
-
-		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
-		sleep_ut = time.Now().Add(sleep_dur).Unix()
-
-
-		time.Sleep(sleep_dur)
-
-		config, err := parseConfigFile(configFile)
-		if err != nil {
-			log.Fatalf("Error loading configs: %v", err)
-		}
-
-		services, err := loadServices(serviceDir)
-		if err != nil {
-			log.Fatalf("Error loading configs: %v", err)
-		}
-
-		// // Print the parsed configurations
-		// for _, config := range services {
-		// 	log.Printf("Name: %s\n", config.Name)
-		// 	log.Printf("Files: %v\n", config.Files)
-		// 	log.Printf("Restart Commands: %v\n", config.RestartCmds)
-		// 	log.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
-		// 	log.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
-		// 	log.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
-		// }
-
-
-		ut = get_dns_ut()
-
-		// Get the current IPv6 prefix
-		currentIPv6Prefix, err := get_prefix(config, false)
-		if err != nil {
-			log.Println("Error:", err)
-			return
-		}
-
-
-		// If the current prefix is different from the last one, update the zone files and reload services
-		if currentIPv6Prefix != lastIPv6Prefix {
-			log.Print("\n\n\n\n")
-			log.Println(strings.Repeat("=", 50))
-			log.Println(strings.Repeat("=", 50))
-			log.Print("\n")
-
-			log.Printf("slept until: %v\n\n", sleep_ut)
-			log.Printf("prefix: %v\n", currentIPv6Prefix)
-
-
-			// err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-			// err = loadAndSaveNamedConf(currentIPv6Prefix)
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-			//
-			// err = loadAndSaveDnsmasqConf(currentIPv6Prefix, currentIPv6Prefix_str)
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-
-			for _, service := range services {
-				err := repSaveFileAndFolder(service, currentIPv6Prefix)
-				if err != nil {
-					log.Println("Error:", err)
-					// return
-				}
-
-				restart_services(service)
-			}
-
-			// err = restart_dns()
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-
-			lastIPv6Prefix = currentIPv6Prefix
-			log.Printf("Files updated successfully.\n\n")
-
-
-			log.Println(strings.Repeat("=", 50))
-			log.Println(strings.Repeat("=", 50))
-		}
-
-		// Sleep for the specified interval before checking again
-		// time.Sleep(checkInterval)
-	}
-}
 
 func get_dns_date8() (string) {
 	// Get the current date
@@ -1194,3 +1027,171 @@ func init() {
 	setEtcDirs()
 }
 
+
+func main() {
+
+	daemonFlag := flag.Bool("d", false, "run as daemon")
+	pidFile := flag.String("pid", fmt.Sprintf("/var/run/%v.pid", progName), "PID file path")
+	logFile := flag.String("log", fmt.Sprintf("/var/log/%v.log", progName), "log file path for rotated logs")
+	niceness := flag.Int("nice", 5, "the niceness to use for the proc")
+	skipIF := flag.Bool("skip_interface", false, "skip getting if not needed")
+
+	flag.Parse()
+
+
+	if *daemonFlag {
+		cntxt := &daemon.Context{
+			PidFileName: *pidFile,
+			PidFilePerm: 0644,
+			LogFileName: *logFile,
+			LogFilePerm: 0640,
+			WorkDir:     "./",
+			Umask:       027,
+			Args:        os.Args,
+		}
+		d, err := cntxt.Reborn()
+		if err != nil {
+			log.Fatalf("unable to daemonize: %v", err)
+		}
+		if d != nil {
+			return
+		}
+		defer cntxt.Release()
+
+		// Configure log rotation
+		log.SetOutput(&lumberjack.Logger{
+			Filename:   *logFile,
+			MaxSize:    5,    // megabytes
+			MaxBackups: 3,    // keep up to n old log files
+			MaxAge:     28,   // days
+		})
+	}
+
+	if err := unix.Setpriority(unix.PRIO_PROCESS, 0, *niceness); err != nil {
+		log.Printf("warning: failed to set priority: %v", err)
+	}
+	var lastIPv6Prefix netip.Prefix = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
+
+	var sleep_sec float64
+	var sleep_dur time.Duration
+	var sleep_ut int64
+
+
+	log.Println("starting program")
+	// log.Println("using if:", interfaceName)
+
+
+
+	// Start an infinite loop
+	for {
+		log.Println("starting loop")
+		if !(*skipIF) {
+			err := get_interfaceName_file()
+			if err != nil {
+				log.Printf("get IF err: %v\n", err)
+				if interfaceName == "" {
+					time.Sleep(2 * time.Second)
+					continue
+				}
+			}
+		}
+
+		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
+
+		// if sleep_sec >= checkInterval.Seconds() {
+		// 	sleep_sec = 0
+		// }
+
+		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
+		sleep_ut = time.Now().Add(sleep_dur).Unix()
+
+
+		time.Sleep(sleep_dur)
+
+		config, err := parseConfigFile(configFile)
+		if err != nil {
+			log.Fatalf("Error loading configs: %v", err)
+		}
+
+		services, err := loadServices(serviceDir)
+		if err != nil {
+			log.Fatalf("Error loading configs: %v", err)
+		}
+
+		// // Print the parsed configurations
+		// for _, config := range services {
+		// 	log.Printf("Name: %s\n", config.Name)
+		// 	log.Printf("Files: %v\n", config.Files)
+		// 	log.Printf("Restart Commands: %v\n", config.RestartCmds)
+		// 	log.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
+		// 	log.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
+		// 	log.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
+		// }
+
+
+		ut = get_dns_ut()
+
+		// Get the current IPv6 prefix
+		currentIPv6Prefix, err := get_prefix(config, false)
+		if err != nil {
+			log.Println("Error:", err)
+			return
+		}
+
+
+		// If the current prefix is different from the last one, update the zone files and reload services
+		if currentIPv6Prefix != lastIPv6Prefix {
+			log.Print("\n\n\n\n")
+			log.Println(strings.Repeat("=", 50))
+			log.Println(strings.Repeat("=", 50))
+			log.Print("\n")
+
+			log.Printf("slept until: %v\n\n", sleep_ut)
+			log.Printf("prefix: %v\n", currentIPv6Prefix)
+
+
+			// err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
+			// if err != nil {
+			// 	log.Println("Error:", err)
+			// 	return
+			// }
+			// err = loadAndSaveNamedConf(currentIPv6Prefix)
+			// if err != nil {
+			// 	log.Println("Error:", err)
+			// 	return
+			// }
+			//
+			// err = loadAndSaveDnsmasqConf(currentIPv6Prefix, currentIPv6Prefix_str)
+			// if err != nil {
+			// 	log.Println("Error:", err)
+			// 	return
+			// }
+
+			for _, service := range services {
+				err := repSaveFileAndFolder(service, currentIPv6Prefix)
+				if err != nil {
+					log.Println("Error:", err)
+					// return
+				}
+
+				restart_services(service)
+			}
+
+			// err = restart_dns()
+			// if err != nil {
+			// 	log.Println("Error:", err)
+			// 	return
+			// }
+
+			lastIPv6Prefix = currentIPv6Prefix
+			log.Printf("Files updated successfully.\n\n")
+
+
+			log.Println(strings.Repeat("=", 50))
+			log.Println(strings.Repeat("=", 50))
+		}
+
+		// Sleep for the specified interval before checking again
+		// time.Sleep(checkInterval)
+	}
+}
