@@ -852,7 +852,8 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 		log.Printf("reading: %v\n", file.From)
 		content, err := os.ReadFile(file.From)
 		if err != nil {
-			return err
+			log.Printf("error replacing vars: %v\n", err)
+			continue
 		}
 
 		replacedContent, err := replace_vars(&content, &prefix, service)
@@ -863,13 +864,11 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 
 		err = os.WriteFile(file.To, []byte(replacedContent), 0644)
 		if err != nil {
-			return err
+			log.Printf("error replacing vars: %v\n", err)
+			continue
 		}
 
 		log.Printf("saving: %v\n", file.To)
-
-		return nil
-
 	}
 
 	return nil
