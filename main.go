@@ -605,7 +605,7 @@ func replace_vars(
 		"ut_10":  ut,
 		"ipv6_prefix":   ipstr,
 		"ipv6_revdns_prefix": rev_dns,
-		"pd_size": fmt.Sprint((*prefix).Bits),
+		"pd_size": fmt.Sprint((*prefix).Bits()),
 	}
 
 	vars = *appendVarMap(&vars, &service.Vars)
