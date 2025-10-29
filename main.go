@@ -1282,7 +1282,7 @@ func templateLoop(skipIF *bool) {
 		if currentIPv6Prefix != lastIPv6Prefix { filesInvalidAdd1() }
 
 
-		currentFilesInvalid := getFilesInvalid()
+		startFilesInvalid := getFilesInvalid()
 		if getIsFilesInvalid() {
 			log.Print("\n\n\n\n")
 			log.Println(strings.Repeat("=", 50))
@@ -1337,7 +1337,7 @@ func templateLoop(skipIF *bool) {
 		// Sleep for the specified interval before checking again
 		// time.Sleep(checkInterval)
 
-		filesInvalidDone(currentFilesInvalid)
+		filesInvalidDone(startFilesInvalid)
 	}
 
 }
