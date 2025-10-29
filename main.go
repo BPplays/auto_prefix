@@ -78,7 +78,7 @@ var globalServices []Service
 var globalConfigMu sync.RWMutex
 var globalServicesMu sync.RWMutex
 
-var HostFound map[Host]bool
+var HostFound map[Host]bool = make(map[Host]bool)
 var hostFoundMu sync.RWMutex
 
 var prefixNotFound error = errors.New("no prefix found")
