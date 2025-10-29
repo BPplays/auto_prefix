@@ -163,6 +163,7 @@ func setHostFoundVal(h Host, b bool) () {
 	hostFoundMu.Lock()
 	defer hostFoundMu.Unlock()
 	HostFound[h] = b
+	filesInvalidAdd(1)
 }
 
 // func getHostFoundVal(s string) (bool) {
