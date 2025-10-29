@@ -175,7 +175,7 @@ func setHostFoundVal(h Host, b bool) () {
 func getHostFound() (map[Host]bool) {
 	hostFoundMu.RLock()
 	defer hostFoundMu.RUnlock()
-	return HostFound
+	return maps.Clone(HostFound)
 }
 
 
@@ -208,7 +208,6 @@ func setEtcDirs() {
 	var etcBase string
 
 	switch strings.ToLower(runtime.GOOS) {
-	case "linux":
 	default:
 		etcBase = "/etc/"
 	case "freebsd":
@@ -1167,7 +1166,7 @@ func loadConfigs(ctx context.Context) (error) {
 
 func pingHosts(ctx context.Context, conf Config) {
 	var wg sync.WaitGroup
-	prevHostFound := maps.Clone(getHostFound())
+	prevHostFound := getHostFound()
 	logTitleln("pinging hosts")
 
 	for _, host := range conf.Hosts {
