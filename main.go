@@ -868,11 +868,23 @@ func repSaveFileAndFolder(
 			log.Printf("error replacing vars: %v\n", err)
 			continue
 		}
+
+
 		bReplacedContent := []byte(replacedContent)
 
-		if !defHashCompare(&content, &bReplacedContent) {
+		toContent, err := os.ReadFile(file.To)
+		switch {
+		case os.IsNotExist(err):
+		case err != nil:
+			log.Printf("error reading final file skipping hash compare: %v\n", err)
 			changed = true
+
+		default:
+			if !defHashCompare(&toContent, &bReplacedContent) {
+				changed = true
+			}
 		}
+
 
 		err = os.WriteFile(file.To, bReplacedContent, 0644)
 		if err != nil {
