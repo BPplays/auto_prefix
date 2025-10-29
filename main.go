@@ -1168,11 +1168,13 @@ func loadConfigs(ctx context.Context) (error) {
 func pingHosts(ctx context.Context, conf Config) {
 	var wg sync.WaitGroup
 	prevHostFound := maps.Clone(getHostFound())
+	logTitleln("pinging hosts")
 
 	for _, host := range conf.Hosts {
 		if _, ok := prevHostFound[host]; !ok {
 			setHostFoundVal(host, false)
 		}
+
 
 		wg.Add(1)
 		go func(host Host) {
@@ -1194,6 +1196,7 @@ func pingHosts(ctx context.Context, conf Config) {
 			err = pinger.RunWithContext(ctx)
 			if err != nil {
 				if ctx.Err() != nil {
+					log.Printf("ctx err running pinger: %v\n", err)
 					setHostFoundVal(host, false)
 					return
 				}
@@ -1205,8 +1208,10 @@ func pingHosts(ctx context.Context, conf Config) {
 			stats := pinger.Statistics()
 			if stats.PacketsRecv > 0 {
 				setHostFoundVal(host, true)
+				log.Printf("pinging: %v, result: true", host.Host)
 			} else {
 				setHostFoundVal(host, false)
+				log.Printf("pinging: %v, result: false", host.Host)
 			}
 
 		}(host)
