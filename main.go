@@ -1414,11 +1414,10 @@ func main() {
 			st := time.Now()
 			conf := getGlobalConfig()
 			pingHosts(ctx, conf)
-			time.Sleep(
-				(time.Duration(
-					conf.HostsCheckTime * float64(time.Second),
-				)) - time.Since(st),
-			)
+
+			sleepTime := time.Duration(conf.HostsCheckTime * float64(time.Second)) - time.Since(st)
+			log.Printf("ping sleeping for %v\n", sleepTime)
+			time.Sleep(sleepTime)
 		}
 	}()
 
