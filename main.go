@@ -18,6 +18,7 @@ import (
 	"os/exec"
 	"reflect"
 	"runtime"
+	"crypto/sha3"
 	"sync"
 
 	// "os/exec"
@@ -230,7 +231,44 @@ func logTitleln(v ...any) {
 		strs = append(strs, fmt.Sprint(an))
 	}
 
-	log.Println(fmt.Sprintf("=== %v ===", strings.Join(strs, " ")))
+	log.Printf("=== %v ===\n", strings.Join(strs, " "))
+}
+
+func defHashFile(path string) (*[]byte, error) {
+	file, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+
+	hash, err := defHash(&file)
+
+	return hash, nil
+}
+
+
+func defHashCompare(a, b *[]byte) (bool) {
+
+	aHash, err := defHash(a)
+	if err != nil { return false }
+
+	bHash, err := defHash(b)
+	if err != nil { return false }
+
+	return aHash == bHash
+}
+
+func defHash(input *[]byte) (*[]byte, error) {
+
+	hash := sha3.New512()
+	_, err := hash.Write(*input)
+	if err != nil {
+		return nil, err
+	}
+
+	sum := hash.Sum(nil)
+
+	return &sum, nil
 }
 
 func sprintBytesAsBinary(data interface{}) (string) {
@@ -780,7 +818,10 @@ func restartServices(config Service) {
 
 }
 
-func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
+func repSaveFileAndFolder(
+	service Service,
+	prefix netip.Prefix,
+) (changed bool, err error) {
 	var allFiles []FileMapping = service.Files
 
 	logTitleln("Reading and saving files")
@@ -827,8 +868,13 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 			log.Printf("error replacing vars: %v\n", err)
 			continue
 		}
+		bReplacedContent := []byte(replacedContent)
 
-		err = os.WriteFile(file.To, []byte(replacedContent), 0644)
+		if !defHashCompare(&content, &bReplacedContent) {
+			changed = true
+		}
+
+		err = os.WriteFile(file.To, bReplacedContent, 0644)
 		if err != nil {
 			log.Printf("error replacing vars: %v\n", err)
 			continue
@@ -837,7 +883,7 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 		log.Printf("saving: %v\n", file.To)
 	}
 
-	return nil
+	return changed, nil
 }
 
 func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
@@ -1319,13 +1365,15 @@ func templateLoop(skipIF *bool) {
 			// }
 
 			for _, service := range services {
-				err := repSaveFileAndFolder(service, currentIPv6Prefix)
+				changed, err := repSaveFileAndFolder(service, currentIPv6Prefix)
 				if err != nil {
 					log.Println("Error:", err)
 					// return
 				}
 
-				restartServices(service)
+				if changed {
+					restartServices(service)
+				}
 			}
 
 			// err = restart_dns()
@@ -1438,6 +1486,17 @@ func main() {
 			st := time.Now()
 			loadConfigs(ctx)
 			time.Sleep((25 * time.Second) - time.Since(st))
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			st := time.Now()
+			filesInvalidAdd(1)
+			time.Sleep((100 * time.Second) - time.Since(st))
+
 		}
 	}()
 
