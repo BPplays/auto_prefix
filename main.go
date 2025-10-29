@@ -557,6 +557,7 @@ func replaceVars(
 		return "", ErrNilPrefix
 	}
 	cacheHostFound := getHostFound()
+	fmt.Printf("cacheHostFound from replaceVars: %v\n", cacheHostFound)
 
 	ipstr := getIpv6Subnet(prefix, 0)
 	rev_dns := IPv6PrefixToReverseDNS(*prefix, 64, 0)
