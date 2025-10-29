@@ -14,8 +14,10 @@ require (
 require (
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
+	github.com/prometheus-community/pro-bing v0.7.0 // indirect
 	github.com/quic-go/qpack v0.5.1 // indirect
 	github.com/seancfoley/bintree v1.3.1 // indirect
 	github.com/sevlyar/go-daemon v0.1.6 // indirect

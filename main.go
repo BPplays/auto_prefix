@@ -18,11 +18,11 @@ import (
 	"os/exec"
 	"reflect"
 	"runtime"
+	"sync"
 
 	// "os/exec"
 	"encoding/json"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -43,14 +43,15 @@ import (
 	"github.com/sevlyar/go-daemon"
 	"golang.org/x/sys/unix"
 	"gopkg.in/natefinch/lumberjack.v2"
+	"github.com/prometheus-community/pro-bing"
 )
 
 var (
-	configFile     = "/etc/auto_prefix/config.yml"
-	serviceDir = "/etc/auto_prefix/config.d"
-	prefix_store = "/etc/auto_prefix/prefix.json"
-	if_file = "/etc/main_interface"
-	pd_file = "/etc/pd_size"
+	ConfigFile     = "/etc/auto_prefix/config.yml"
+	ServiceDir = "/etc/auto_prefix/config.d"
+	PrefixStore = "/etc/auto_prefix/prefix.json"
+	IfFile = "/etc/main_interface"
+	PdFile = "/etc/pd_size"
 )
 
 const (
@@ -69,6 +70,17 @@ var (
 
 )
 
+var filesInvalid int = 1
+var filesInvalidMu sync.RWMutex
+
+var globalConfig Config
+var globalServices []Service
+var globalConfigMu sync.RWMutex
+var globalServicesMu sync.RWMutex
+
+var HostFound map[Host]bool
+var hostFoundMu sync.RWMutex
+
 var prefixNotFound error = errors.New("no prefix found")
 
 var interfaceName = ""
@@ -85,9 +97,16 @@ type jsonIPv6Prefix struct {
 }
 
 
+type Host struct {
+	VarName                 string        `yaml:"var_name"`
+	Host                 string        `yaml:"host"`
+}
+
 type Config struct {
 	Source                 string        `yaml:"source"`
 	Url                 string        `yaml:"url"`
+	Hosts                 []Host        `yaml:"hosts"`
+	HostsCheckTime                 float64        `yaml:"hosts_check_time"`
 }
 
 type Service struct {
@@ -107,6 +126,84 @@ type Service struct {
 	Vars      map[string]any           `yaml:"vars"`
 }
 
+func filesInvalidAdd1() () {
+	filesInvalidMu.Lock()
+	defer filesInvalidMu.Unlock()
+	if filesInvalid < 0 { filesInvalid = 0 }
+	filesInvalid += 1
+}
+
+func filesInvalidAdd(i int) () {
+	filesInvalidMu.Lock()
+	defer filesInvalidMu.Unlock()
+	if filesInvalid < 0 { filesInvalid = 0 }
+	filesInvalid += i
+}
+
+func filesInvalidDone(i int) () {
+	filesInvalidMu.Lock()
+	defer filesInvalidMu.Unlock()
+	filesInvalid -= i
+	if filesInvalid < 0 { filesInvalid = 0 }
+}
+
+func getIsFilesInvalid() (bool) {
+	filesInvalidMu.RLock()
+	defer filesInvalidMu.RUnlock()
+	return filesInvalid > 0
+}
+
+func getFilesInvalid() (int) {
+	filesInvalidMu.RLock()
+	defer filesInvalidMu.RUnlock()
+	return filesInvalid
+}
+
+func setHostFoundVal(h Host, b bool) () {
+	hostFoundMu.Lock()
+	defer hostFoundMu.Unlock()
+	HostFound[h] = b
+}
+
+// func getHostFoundVal(s string) (bool) {
+// 	hostFoundMu.RLock()
+// 	defer hostFoundMu.RUnlock()
+// 	return hostFound[s]
+// }
+
+
+func getHostFound() (map[Host]bool) {
+	hostFoundMu.RLock()
+	defer hostFoundMu.RUnlock()
+	return HostFound
+}
+
+
+func setGlobalConfig(conf Config) () {
+	globalConfigMu.Lock()
+	defer globalConfigMu.Unlock()
+	globalConfig = conf
+}
+
+
+func getGlobalConfig() (Config) {
+	globalConfigMu.RLock()
+	defer globalConfigMu.RUnlock()
+	return globalConfig
+}
+
+func setGlobalServices(srvs []Service) () {
+	globalServicesMu.Lock()
+	defer globalServicesMu.Unlock()
+	globalServices = srvs
+}
+
+func getGlobalServices() ([]Service) {
+	globalServicesMu.RLock()
+	defer globalServicesMu.RUnlock()
+	return globalServices
+}
+
 func setEtcDirs() {
 	var etcBase string
 
@@ -120,11 +217,11 @@ func setEtcDirs() {
 	}
 
 
-	configFile     = filepath.Join(etcBase, "auto_prefix/config.yml")
-	serviceDir = filepath.Join(etcBase, "auto_prefix/config.d")
-	prefix_store = filepath.Join(etcBase, "auto_prefix/prefix.json")
-	if_file = filepath.Join(etcBase, "main_interface")
-	pd_file = filepath.Join(etcBase, "pd_size")
+	ConfigFile     = filepath.Join(etcBase, "auto_prefix/config.yml")
+	ServiceDir = filepath.Join(etcBase, "auto_prefix/config.d")
+	PrefixStore = filepath.Join(etcBase, "auto_prefix/prefix.json")
+	IfFile = filepath.Join(etcBase, "main_interface")
+	PdFile = filepath.Join(etcBase, "pd_size")
 }
 
 func logTitleln(v ...any) {
@@ -160,7 +257,7 @@ func sprintBytesAsBinary(data interface{}) (string) {
 
 
 func get_interfaceName_file() error {
-	content, err := os.ReadFile(if_file)
+	content, err := os.ReadFile(IfFile)
 	if err != nil {
 		return err
 	}
@@ -281,37 +378,37 @@ func getIpv6Subnet(prefix *netip.Prefix, vlan uint64) string {
 	return ipstr
 }
 
-func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
-	// Define the regular expression pattern
-	pattern := `#@ipv6_prefix_([0-9a-fA-F]+)@#`
-	re := regexp.MustCompile(pattern)
-	// log.Println("starting regex conv")
-
-	// Find all matches in the content
-	matches := re.FindAllStringSubmatch(content, -1)
-	var repped string = content
-	var vlan uint64
-	var err error
-	// Replace each match
-	for _, match := range matches {
-		fullMatch := match[0]
-		vlanStr := match[1] // Extract the VLAN number
-		vlan, err = strconv.ParseUint(vlanStr, 16, 64)
-		if err != nil {
-			// Handle conversion error
-			log.Println("Error converting VLAN number:", err)
-			continue
-		}
-
-		ipstr := getIpv6Subnet(&prefix, vlan)
-
-		replacement_ip := ipstr
-		repped = strings.ReplaceAll(repped, fullMatch, replacement_ip)
-		// log.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement_ip.Addr().String())
-	}
-
-	return repped
-}
+// func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
+// 	// Define the regular expression pattern
+// 	pattern := `#@ipv6_prefix_([0-9a-fA-F]+)@#`
+// 	re := regexp.MustCompile(pattern)
+// 	// log.Println("starting regex conv")
+//
+// 	// Find all matches in the content
+// 	matches := re.FindAllStringSubmatch(content, -1)
+// 	var repped string = content
+// 	var vlan uint64
+// 	var err error
+// 	// Replace each match
+// 	for _, match := range matches {
+// 		fullMatch := match[0]
+// 		vlanStr := match[1] // Extract the VLAN number
+// 		vlan, err = strconv.ParseUint(vlanStr, 16, 64)
+// 		if err != nil {
+// 			// Handle conversion error
+// 			log.Println("Error converting VLAN number:", err)
+// 			continue
+// 		}
+//
+// 		ipstr := getIpv6Subnet(&prefix, vlan)
+//
+// 		replacement_ip := ipstr
+// 		repped = strings.ReplaceAll(repped, fullMatch, replacement_ip)
+// 		// log.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement_ip.Addr().String())
+// 	}
+//
+// 	return repped
+// }
 
 func parseConfigFile(filePath string) (Config, error) {
 	file, err := os.Open(filePath)
@@ -416,6 +513,21 @@ func appendVarMap(a *map[string]any, b *map[string]any) *map[string]any {
 	return &out
 }
 
+func varHostFoundAdd(
+	a *map[string]any,
+	hostFound *map[Host]bool,
+) *map[string]any {
+	out := make(map[string]any)
+
+	maps.Copy(out, *a)
+
+	for k, v := range *hostFound {
+		out[k.VarName] = v
+	}
+
+	return &out
+}
+
 func looseParseSuffix(ipStr string) (netip.Addr, error) {
 	var ip netip.Addr
 	var firstErr error
@@ -437,7 +549,7 @@ func looseParseSuffix(ipStr string) (netip.Addr, error) {
 	return ip, firstErr
 }
 
-func replace_vars(
+func replaceVars(
 	content *[]byte,
 	prefix *netip.Prefix,
 	service Service,
@@ -445,6 +557,7 @@ func replace_vars(
 	if prefix == nil {
 		return "", ErrNilPrefix
 	}
+	cacheHostFound := getHostFound()
 
 	ipstr := getIpv6Subnet(prefix, 0)
 	rev_dns := IPv6PrefixToReverseDNS(*prefix, 64, 0)
@@ -459,6 +572,7 @@ func replace_vars(
 	}
 
 	vars = *appendVarMap(&vars, &service.Vars)
+	vars = *varHostFoundAdd(&vars, &cacheHostFound)
 
     tpl := template.New("zonefile.tmpl").
         Funcs(template.FuncMap{
@@ -585,7 +699,7 @@ func runRestartCmds(ctx context.Context, config Service) ([]error) {
 }
 
 
-func restart_services(config Service) {
+func restartServices(config Service) {
 	logTitleln("Restarting services")
 
 	if config.RestartTimeout <= 0 {
@@ -708,7 +822,7 @@ func repSaveFileAndFolder(service Service, prefix netip.Prefix) (error) {
 			continue
 		}
 
-		replacedContent, err := replace_vars(&content, &prefix, service)
+		replacedContent, err := replaceVars(&content, &prefix, service)
 		if err != nil {
 			log.Printf("error replacing vars: %v\n", err)
 			continue
@@ -747,7 +861,7 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 				found_prefix = true
 			}
 
-			err, prefix_len = get_pd_size_file(pd_file)
+			err, prefix_len = get_pd_size_file(PdFile)
 			if err != nil {
 				prefix_len = Prefix_length_default
 			}
@@ -874,13 +988,13 @@ func get_addr_from_if(interfaceName string) (netip.Addr, error) {
 
 
 func readIPv6PrefixFromFile() (*netip.Prefix, error) {
-	file, err := os.Open(prefix_store)
+	file, err := os.Open(PrefixStore)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	data, err := os.ReadFile(prefix_store)
+	data, err := os.ReadFile(PrefixStore)
 	if err != nil {
 		return nil, err
 	}
@@ -898,7 +1012,7 @@ func writeIPv6PrefixToFile(prefix jsonIPv6Prefix) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(prefix_store, data, 0644)
+	return os.WriteFile(PrefixStore, data, 0644)
 }
 
 func updateIPv6Prefix(newPrefix netip.Prefix) error {
@@ -1023,8 +1137,209 @@ func isValidIPprefixAddress(ip netip.Addr) bool {
 	return true
 }
 
+
+func loadConfigs(ctx context.Context) (error) {
+	if ctx.Err() != nil { return ctx.Err() }
+
+	config, err := parseConfigFile(ConfigFile)
+	if err != nil {
+		return err
+	}
+
+	services, err := loadServices(ServiceDir)
+	if err != nil {
+		return err
+	}
+
+	if ctx.Err() != nil { return ctx.Err() }
+
+
+	if !reflect.DeepEqual(getGlobalConfig(), config) ||
+	!reflect.DeepEqual(getGlobalServices(), services) {
+		filesInvalidAdd1()
+	}
+
+	setGlobalConfig(config)
+	setGlobalServices(services)
+
+	return nil
+}
+
+func pingHosts(ctx context.Context, conf Config) {
+	var wg sync.WaitGroup
+	prevHostFound := maps.Clone(getHostFound())
+
+	for _, host := range conf.Hosts {
+		if _, ok := prevHostFound[host]; !ok {
+			setHostFoundVal(host, false)
+		}
+
+		wg.Add(1)
+		go func(host Host) {
+			defer wg.Done()
+
+			pinger, err := probing.NewPinger(host.Host)
+			if err != nil {
+				log.Printf("err making pinger: %v\n", err)
+				return
+			}
+
+			pinger.Count = 7
+			pinger.Interval = 1 * time.Second
+			pinger.SetPrivileged(true)
+			pinger.SetDoNotFragment(true)
+
+			err = pinger.RunWithContext(ctx)
+			if err != nil {
+				if ctx.Err() != nil {
+					setHostFoundVal(host, false)
+					return
+				}
+
+				log.Printf("err running pinger: %v\n", err)
+				return
+			}
+
+			stats := pinger.Statistics()
+			if stats.PacketsRecv > 0 {
+				setHostFoundVal(host, true)
+			} else {
+				setHostFoundVal(host, false)
+			}
+
+		}(host)
+	}
+	wg.Wait()
+
+	if !maps.Equal(getHostFound(), prevHostFound) {
+		filesInvalidAdd(1)
+	}
+}
+
+
+func templateLoop(skipIF *bool) {
+	var lastIPv6Prefix netip.Prefix = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
+
+	var sleep_sec float64
+	var sleep_dur time.Duration
+	var sleep_ut int64
+
+	// Start an infinite loop
+	for {
+		log.Println("starting loop")
+		if !(*skipIF) {
+			err := get_interfaceName_file()
+			if err != nil {
+				log.Printf("get IF err: %v\n", err)
+				if interfaceName == "" {
+					time.Sleep(2 * time.Second)
+					continue
+				}
+			}
+		}
+
+		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
+
+		// if sleep_sec >= checkInterval.Seconds() {
+		// 	sleep_sec = 0
+		// }
+
+		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
+		sleep_ut = time.Now().Add(sleep_dur).Unix()
+
+
+		time.Sleep(sleep_dur)
+
+		config := getGlobalConfig()
+		services := getGlobalServices()
+
+		// // Print the parsed configurations
+		// for _, config := range services {
+		// 	log.Printf("Name: %s\n", config.Name)
+		// 	log.Printf("Files: %v\n", config.Files)
+		// 	log.Printf("Restart Commands: %v\n", config.RestartCmds)
+		// 	log.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
+		// 	log.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
+		// 	log.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
+		// }
+
+
+		ut = get_dns_ut()
+
+		// Get the current IPv6 prefix
+		currentIPv6Prefix, err := get_prefix(config, false)
+		if err != nil {
+			log.Println("Error:", err)
+			return
+		}
+
+		if currentIPv6Prefix != lastIPv6Prefix { filesInvalidAdd1() }
+
+
+		currentFilesInvalid := getFilesInvalid()
+		if getIsFilesInvalid() {
+			log.Print("\n\n\n\n")
+			log.Println(strings.Repeat("=", 50))
+			log.Println(strings.Repeat("=", 50))
+			log.Print("\n")
+
+			log.Printf("slept until: %v\n\n", sleep_ut)
+			log.Printf("prefix: %v\n", currentIPv6Prefix)
+
+
+			// err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
+			// if err != nil {
+			// 	log.Println("Error:", err)
+			// 	return
+			// }
+			// err = loadAndSaveNamedConf(currentIPv6Prefix)
+			// if err != nil {
+			// 	log.Println("Error:", err)
+			// 	return
+			// }
+			//
+			// err = loadAndSaveDnsmasqConf(currentIPv6Prefix, currentIPv6Prefix_str)
+			// if err != nil {
+			// 	log.Println("Error:", err)
+			// 	return
+			// }
+
+			for _, service := range services {
+				err := repSaveFileAndFolder(service, currentIPv6Prefix)
+				if err != nil {
+					log.Println("Error:", err)
+					// return
+				}
+
+				restartServices(service)
+			}
+
+			// err = restart_dns()
+			// if err != nil {
+			// 	log.Println("Error:", err)
+			// 	return
+			// }
+
+			lastIPv6Prefix = currentIPv6Prefix
+			log.Printf("Files updated successfully.\n\n")
+
+
+			log.Println(strings.Repeat("=", 50))
+			log.Println(strings.Repeat("=", 50))
+		}
+
+		// Sleep for the specified interval before checking again
+		// time.Sleep(checkInterval)
+
+		filesInvalidDone(currentFilesInvalid)
+	}
+
+}
+
 func init() {
+	ctx := context.Background()
 	setEtcDirs()
+	loadConfigs(ctx)
 }
 
 
@@ -1070,128 +1385,49 @@ func main() {
 	if err := unix.Setpriority(unix.PRIO_PROCESS, 0, *niceness); err != nil {
 		log.Printf("warning: failed to set priority: %v", err)
 	}
-	var lastIPv6Prefix netip.Prefix = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
-
-	var sleep_sec float64
-	var sleep_dur time.Duration
-	var sleep_ut int64
 
 
 	log.Println("starting program")
 	// log.Println("using if:", interfaceName)
 
 
+	var wg sync.WaitGroup
 
-	// Start an infinite loop
-	for {
-		log.Println("starting loop")
-		if !(*skipIF) {
-			err := get_interfaceName_file()
-			if err != nil {
-				log.Printf("get IF err: %v\n", err)
-				if interfaceName == "" {
-					time.Sleep(2 * time.Second)
-					continue
-				}
-			}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		templateLoop(skipIF)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ctx := context.Background()
+
+		for {
+			st := time.Now()
+			conf := getGlobalConfig()
+			pingHosts(ctx, conf)
+			time.Sleep(
+				(time.Duration(
+					conf.HostsCheckTime * float64(time.Second),
+				)) - time.Since(st),
+			)
 		}
+	}()
 
-		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ctx := context.Background()
 
-		// if sleep_sec >= checkInterval.Seconds() {
-		// 	sleep_sec = 0
-		// }
-
-		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
-		sleep_ut = time.Now().Add(sleep_dur).Unix()
-
-
-		time.Sleep(sleep_dur)
-
-		config, err := parseConfigFile(configFile)
-		if err != nil {
-			log.Fatalf("Error loading configs: %v", err)
+		for {
+			st := time.Now()
+			loadConfigs(ctx)
+			time.Sleep((25 * time.Second) - time.Since(st))
 		}
+	}()
 
-		services, err := loadServices(serviceDir)
-		if err != nil {
-			log.Fatalf("Error loading configs: %v", err)
-		}
+	wg.Wait()
 
-		// // Print the parsed configurations
-		// for _, config := range services {
-		// 	log.Printf("Name: %s\n", config.Name)
-		// 	log.Printf("Files: %v\n", config.Files)
-		// 	log.Printf("Restart Commands: %v\n", config.RestartCmds)
-		// 	log.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
-		// 	log.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
-		// 	log.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
-		// }
-
-
-		ut = get_dns_ut()
-
-		// Get the current IPv6 prefix
-		currentIPv6Prefix, err := get_prefix(config, false)
-		if err != nil {
-			log.Println("Error:", err)
-			return
-		}
-
-
-		// If the current prefix is different from the last one, update the zone files and reload services
-		if currentIPv6Prefix != lastIPv6Prefix {
-			log.Print("\n\n\n\n")
-			log.Println(strings.Repeat("=", 50))
-			log.Println(strings.Repeat("=", 50))
-			log.Print("\n")
-
-			log.Printf("slept until: %v\n\n", sleep_ut)
-			log.Printf("prefix: %v\n", currentIPv6Prefix)
-
-
-			// err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-			// err = loadAndSaveNamedConf(currentIPv6Prefix)
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-			//
-			// err = loadAndSaveDnsmasqConf(currentIPv6Prefix, currentIPv6Prefix_str)
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-
-			for _, service := range services {
-				err := repSaveFileAndFolder(service, currentIPv6Prefix)
-				if err != nil {
-					log.Println("Error:", err)
-					// return
-				}
-
-				restart_services(service)
-			}
-
-			// err = restart_dns()
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-
-			lastIPv6Prefix = currentIPv6Prefix
-			log.Printf("Files updated successfully.\n\n")
-
-
-			log.Println(strings.Repeat("=", 50))
-			log.Println(strings.Repeat("=", 50))
-		}
-
-		// Sleep for the specified interval before checking again
-		// time.Sleep(checkInterval)
-	}
 }
