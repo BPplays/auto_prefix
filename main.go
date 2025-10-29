@@ -163,7 +163,6 @@ func setHostFoundVal(h Host, b bool) () {
 	hostFoundMu.Lock()
 	defer hostFoundMu.Unlock()
 	HostFound[h] = b
-	filesInvalidAdd(1)
 }
 
 // func getHostFoundVal(s string) (bool) {
@@ -1204,10 +1203,11 @@ func pingHosts(ctx context.Context, conf Config) {
 			if err != nil {
 				if ctx.Err() != nil {
 					log.Printf("ctx err running pinger: %v\n", err)
-					// setHostFoundVal(host, false)
-					// return
+					setHostFoundVal(host, false)
+					return
 				}
 
+				setHostFoundVal(host, false)
 				log.Printf("err running pinger: %v\n", err)
 				return
 			}
