@@ -1192,7 +1192,13 @@ func pingHosts(ctx context.Context, conf Config) {
 				pinger.SetDoNotFragment(true)
 			}
 
-			err = pinger.RunWithContext(ctx)
+			pctx, cancel := context.WithTimeout(
+				ctx,
+				(pinger.Interval * time.Duration(pinger.Count)) + 100 * time.Millisecond,
+			)
+			defer cancel()
+
+			err = pinger.RunWithContext(pctx)
 			if err != nil {
 				if ctx.Err() != nil {
 					log.Printf("ctx err running pinger: %v\n", err)
