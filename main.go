@@ -1187,7 +1187,9 @@ func pingHosts(ctx context.Context, conf Config) {
 			pinger.Count = 7
 			pinger.Interval = 1 * time.Second
 			pinger.SetPrivileged(true)
-			pinger.SetDoNotFragment(true)
+			if strings.ToLower(runtime.GOOS) != "freebsd" {
+				pinger.SetDoNotFragment(true)
+			}
 
 			err = pinger.RunWithContext(ctx)
 			if err != nil {
