@@ -1202,8 +1202,8 @@ func pingHosts(ctx context.Context, conf Config) {
 			if err != nil {
 				if ctx.Err() != nil {
 					log.Printf("ctx err running pinger: %v\n", err)
-					setHostFoundVal(host, false)
-					return
+					// setHostFoundVal(host, false)
+					// return
 				}
 
 				log.Printf("err running pinger: %v\n", err)
