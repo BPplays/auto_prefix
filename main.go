@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha3"
 	"crypto/tls"
 	"errors"
 	"flag"
@@ -16,9 +17,9 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"os/user"
 	"reflect"
 	"runtime"
-	"crypto/sha3"
 	"sync"
 
 	// "os/exec"
@@ -41,10 +42,10 @@ import (
 	"text/template"
 
 	"github.com/BPplays/auto_prefix/source"
+	"github.com/prometheus-community/pro-bing"
 	"github.com/sevlyar/go-daemon"
 	"golang.org/x/sys/unix"
 	"gopkg.in/natefinch/lumberjack.v2"
-	"github.com/prometheus-community/pro-bing"
 )
 
 var (
@@ -91,6 +92,9 @@ var ut string = ""
 type FileMapping struct {
 	From string `yaml:"from"`
 	To   string `yaml:"to"`
+	Perms   FileMode `yaml:"perms"`
+	Owner   string `yaml:"owner"`
+	Group   string `yaml:"group"`
 }
 
 type jsonIPv6Prefix struct {
@@ -126,6 +130,41 @@ type Service struct {
 	RestartTimeout      int           `yaml:"restart_timeout"`
 	Vars      map[string]any           `yaml:"vars"`
 }
+
+// FileMode is a thin wrapper so we can implement custom unmarshalling.
+type FileMode os.FileMode
+
+// UnmarshalYAML supports either a numeric YAML value (e.g. 420) or a string
+// like "0644", "0755", or "0o644".
+func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
+
+	var s string
+	if err := node.Decode(&s); err != nil {
+		return err
+		// var i int64
+		// if err := node.Decode(&i); err != nil {
+		// 	return err
+		// }
+		// s = fmt.Sprintf("%v", i)
+	}
+
+
+	s = strings.TrimSpace(s)
+	// accept 0o644 as a convenience -> convert to 0644
+	if strings.HasPrefix(s, "0o") || strings.HasPrefix(s, "0O") {
+		s = "0" + s[2:]
+	}
+	// strconv.ParseUint with base 0 understands leading 0 as octal and 0x as hex.
+	v, err := strconv.ParseUint(s, 0, 32)
+	if err != nil {
+		return fmt.Errorf("parse filemode %q: %w", s, err)
+	}
+	*m = FileMode(os.FileMode(v))
+	return nil
+}
+
+// Convenience to get the real os.FileMode
+func (m FileMode) FileMode() os.FileMode { return os.FileMode(m) }
 
 func filesInvalidAdd1() () {
 	filesInvalidMu.Lock()
@@ -886,11 +925,31 @@ func repSaveFileAndFolder(
 		}
 
 
-		err = os.WriteFile(file.To, bReplacedContent, 0644)
+		err = os.WriteFile(file.To, bReplacedContent, file.Perms.FileMode())
 		if err != nil {
 			log.Printf("error replacing vars: %v\n", err)
 			continue
 		}
+
+		usr, err := user.Lookup(file.Owner)
+		if err != nil {
+			usr, err = user.LookupId(file.Owner)
+			if err != nil { continue }
+		}
+
+		grp, err := user.LookupGroup(file.Group)
+		if err != nil {
+			grp, err = user.LookupGroupId(file.Group)
+			if err != nil { continue }
+		}
+
+		uid, err := strconv.Atoi(usr.Uid)
+		if err != nil { continue }
+
+		gid, err := strconv.Atoi(grp.Gid)
+		if err != nil { continue }
+
+		os.Chown(file.To, uid, gid)
 
 		log.Printf("saving: %v\n", file.To)
 	}
@@ -1109,7 +1168,7 @@ func IPv6PrefixToReverseDNS(prefix netip.Prefix, prefLen int, vlan uint64) strin
 	if err != nil {
 		revdns = "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa"
 	}
-	log.Printf("debug: full revdns is: %v\n", revdns)
+	// log.Printf("debug: full revdns is: %v\n", revdns)
 
 	// Calculate the number of nibbles to include in the prefix
 	numNibbles := prefLen / 4
@@ -1124,7 +1183,7 @@ func IPv6PrefixToReverseDNS(prefix netip.Prefix, prefLen int, vlan uint64) strin
 	// Join the prefix parts back into a reverse DNS string
 	prefixPart := strings.Join(prefixParts, ".")
 
-	log.Printf("debug: part revdns is: %v\n", prefixPart)
+	// log.Printf("debug: part revdns is: %v\n", prefixPart)
 
 	return prefixPart
 }
