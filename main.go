@@ -933,13 +933,19 @@ func repSaveFileAndFolder(
 		usr, err := user.Lookup(file.Owner)
 		if err != nil {
 			usr, err = user.LookupId(file.Owner)
-			if err != nil { continue }
+			if err != nil {
+				log.Printf("err looking up owner: %v", err)
+				continue
+			}
 		}
 
 		grp, err := user.LookupGroup(file.Group)
 		if err != nil {
 			grp, err = user.LookupGroupId(file.Group)
-			if err != nil { continue }
+			if err != nil {
+				log.Printf("err looking up group: %v", err)
+				continue
+			}
 		}
 
 		uid, err := strconv.Atoi(usr.Uid)
