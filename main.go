@@ -1461,6 +1461,7 @@ func templateLoop(skipIF *bool) {
 				}
 
 				if changed {
+					logTitleln("some files changed")
 					restartServices(service)
 				}
 			}
