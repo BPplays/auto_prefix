@@ -930,13 +930,13 @@ func repSaveFileAndFolder(
 			log.Printf("error replacing vars: %v\n", err)
 		}
 
-		fmt.Printf("[test whole] file: %v", file)
+		fmt.Printf("[test whole] file: %v\n", file)
 		usr, err := user.Lookup(file.Owner)
 		if err != nil {
-			log.Printf("[%v] err looking up owner by name trying uid: %v", file.Owner, err)
+			log.Printf("[%v] err looking up owner by name trying uid: %v\n", file.Owner, err)
 			usr, err = user.LookupId(file.Owner)
 			if err != nil {
-				log.Printf("err looking up owner: %v", err)
+				log.Printf("err looking up owner: %v\n", err)
 				continue
 			}
 		}
@@ -945,7 +945,7 @@ func repSaveFileAndFolder(
 		if err != nil {
 			grp, err = user.LookupGroupId(file.Group)
 			if err != nil {
-				log.Printf("err looking up group: %v", err)
+				log.Printf("err looking up group: %v\n", err)
 				continue
 			}
 		}
@@ -957,7 +957,7 @@ func repSaveFileAndFolder(
 		if err != nil { continue }
 
 		err = os.Chown(file.To, uid, gid)
-		if err != nil { log.Printf("erring chowning: %v", err) }
+		if err != nil { log.Printf("erring chowning: %v\n", err) }
 
 		log.Printf("saving: %v\n", file.To)
 	}
