@@ -932,7 +932,7 @@ func repSaveFileAndFolder(
 
 		usr, err := user.Lookup(file.Owner)
 		if err != nil {
-			log.Printf("err looking up owner by name trying uid: %v", err)
+			log.Printf("[%v] err looking up owner by name trying uid: %v", file.Owner, err)
 			usr, err = user.LookupId(file.Owner)
 			if err != nil {
 				log.Printf("err looking up owner: %v", err)
