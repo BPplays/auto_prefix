@@ -148,6 +148,7 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 		// s = fmt.Sprintf("%v", i)
 	}
 
+	log.Printf("[fmum] string is %v\n", s)
 
 	s = strings.TrimSpace(s)
 	// accept 0o644 as a convenience -> convert to 0644
@@ -159,6 +160,8 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 	if err != nil {
 		return fmt.Errorf("parse filemode %q: %w", s, err)
 	}
+	log.Printf("[fmum] v is %v\n", v)
+
 	*m = FileMode(os.FileMode(v))
 	return nil
 }
