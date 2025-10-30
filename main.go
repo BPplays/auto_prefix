@@ -162,7 +162,9 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 	}
 	log.Printf("[fmum] v is %#o\n", v)
 
+	log.Printf("[fmum] m before is %v\n", *m)
 	*m = FileMode(os.FileMode(v))
+	log.Printf("[fmum] m after is %v\n", *m)
 	return nil
 }
 
