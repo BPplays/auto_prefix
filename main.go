@@ -148,7 +148,7 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 		// s = fmt.Sprintf("%v", i)
 	}
 
-	log.Printf("[fmum] string is %v\n", s)
+	// log.Printf("[fmum] string is %v\n", s)
 
 	s = strings.TrimSpace(s)
 	// accept 0o644 as a convenience -> convert to 0644
@@ -160,11 +160,11 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 	if err != nil {
 		return fmt.Errorf("parse filemode %q: %w", s, err)
 	}
-	log.Printf("[fmum] v is %#o\n", v)
+	// log.Printf("[fmum] v is %#o\n", v)
 
-	log.Printf("[fmum] m before is %v\n", *m)
+	// log.Printf("[fmum] m before is %v\n", *m)
 	*m = FileMode(os.FileMode(v))
-	log.Printf("[fmum] m after is %v\n", *m)
+	// log.Printf("[fmum] m after is %v\n", *m)
 	return nil
 }
 
@@ -905,7 +905,7 @@ func repSaveFileAndFolder(
 	}
 
 	for _, file := range allFiles {
-		log.Printf("reading: %v\n", file.From)
+		// log.Printf("reading: %v\n", file.From)
 		content, err := os.ReadFile(file.From)
 		if err != nil {
 			log.Printf("error replacing vars: %v\n", err)
