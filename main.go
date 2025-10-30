@@ -160,7 +160,7 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 	if err != nil {
 		return fmt.Errorf("parse filemode %q: %w", s, err)
 	}
-	log.Printf("[fmum] v is %v\n", v)
+	log.Printf("[fmum] v is %#o\n", v)
 
 	*m = FileMode(os.FileMode(v))
 	return nil
