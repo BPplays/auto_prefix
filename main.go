@@ -634,7 +634,7 @@ func replaceVars(
 		return "", ErrNilPrefix
 	}
 	cacheHostFound := getHostFound()
-	fmt.Printf("cacheHostFound from replaceVars: %v\n", cacheHostFound)
+	// fmt.Printf("cacheHostFound from replaceVars: %v\n", cacheHostFound)
 
 	ipstr := getIpv6Subnet(prefix, 0)
 	rev_dns := IPv6PrefixToReverseDNS(*prefix, 64, 0)
@@ -928,7 +928,6 @@ func repSaveFileAndFolder(
 		err = os.WriteFile(file.To, bReplacedContent, file.Perms.FileMode())
 		if err != nil {
 			log.Printf("error replacing vars: %v\n", err)
-			continue
 		}
 
 		usr, err := user.Lookup(file.Owner)
@@ -949,7 +948,8 @@ func repSaveFileAndFolder(
 		gid, err := strconv.Atoi(grp.Gid)
 		if err != nil { continue }
 
-		os.Chown(file.To, uid, gid)
+		err = os.Chown(file.To, uid, gid)
+		if err != nil { log.Printf("erring chowning: %v", err) }
 
 		log.Printf("saving: %v\n", file.To)
 	}
