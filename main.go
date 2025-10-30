@@ -895,7 +895,12 @@ func repSaveFileAndFolder(
 
 			filePath := filepath.Join(folder.From, file.Name())
 			filePathTo := filepath.Join(folder.To, file.Name())
-			allFiles = append(allFiles, FileMapping{From: filePath, To: filePathTo})
+
+			tFile := folder
+			tFile.From = filePath
+			tFile.To = filePathTo
+
+			allFiles = append(allFiles, tFile)
 		}
 	}
 
