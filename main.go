@@ -930,6 +930,7 @@ func repSaveFileAndFolder(
 			log.Printf("error replacing vars: %v\n", err)
 		}
 
+		fmt.Printf("[test whole] file: %v", file)
 		usr, err := user.Lookup(file.Owner)
 		if err != nil {
 			log.Printf("[%v] err looking up owner by name trying uid: %v", file.Owner, err)
