@@ -789,8 +789,7 @@ func restartFreebsdServices(ctx context.Context, config Service) ([]error) {
 	return errs
 }
 
-func runRestartCmds(ctx context.Context, config Service) ([]error) {
-	var errs []error
+func runRestartCmds(ctx context.Context, config Service) (errs []error) {
 
 	for _, target := range config.RestartCmds {
 		var outBuf, errBuf bytes.Buffer
@@ -808,7 +807,7 @@ func runRestartCmds(ctx context.Context, config Service) ([]error) {
 		errStr := errBuf.String()
 		if err != nil {
 			if len(strings.TrimSpace(errStr)) >= 1 {
-				err = ErrStdErrNotEmpty
+				err = fmt.Errorf("%w, cmd: %v", ErrStdErrNotEmpty, errBuf.String())
 			}
 		}
 
@@ -891,7 +890,7 @@ func restartServices(config Service) {
 		for _, err := range errs {
 			switch err {
 			default:
-				slog.Error(fmt.Sprintf("restart cmd err: %v", err))
+				slog.Error(fmt.Sprintf("restart cmd err: %v\ncmd: %v", err, ))
 			case nil:
 			case errors.ErrUnsupported:
 			}
