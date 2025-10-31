@@ -212,10 +212,10 @@ func getFilesInvalid() (int) {
 	return filesInvalid
 }
 
-func setHostFoundVal(h HostCheck, b bool) () {
+func setHostFound(newHostCheck map[HostCheck]bool) () {
 	hostFoundMu.Lock()
 	defer hostFoundMu.Unlock()
-	HostFound[h] = b
+	HostFound = maps.Clone(newHostCheck)
 }
 
 // func getHostFoundVal(s string) (bool) {
@@ -1419,11 +1419,12 @@ func pingHost(
 func checkHosts(ctx context.Context, conf Config) {
 	var wg sync.WaitGroup
 	prevHostFound := getHostFound()
+	newHostFound := getHostFound()
 	logTitleln("pinging hosts")
 
 	for _, host := range conf.Hosts {
 		if _, ok := prevHostFound[host]; !ok {
-			setHostFoundVal(host, false)
+			newHostFound[host] = false
 		}
 
 		var checkFunc func(context.Context, HostCheck, int) (bool, error)
@@ -1446,10 +1447,11 @@ func checkHosts(ctx context.Context, conf Config) {
 				return
 			}
 
-			setHostFoundVal(host, result)
+			newHostFound[host] = result
 		}(host)
 	}
 	wg.Wait()
+	setHostFound(newHostFound)
 
 	if !maps.Equal(getHostFound(), prevHostFound) {
 		filesInvalidAdd(1)
@@ -1481,10 +1483,6 @@ func templateLoop(skipIF *bool) {
 
 		sleep_sec = ((math.Mod(float64(time.Now().Unix()), checkInterval.Seconds())) - checkInterval.Seconds() ) * -1
 
-		// if sleep_sec >= checkInterval.Seconds() {
-		// 	sleep_sec = 0
-		// }
-
 		sleep_dur = time.Duration(sleep_sec * float64(time.Second))
 		sleep_ut = time.Now().Add(sleep_dur).Unix()
 
@@ -1493,17 +1491,6 @@ func templateLoop(skipIF *bool) {
 
 		config := getGlobalConfig()
 		services := getGlobalServices()
-
-		// // Print the parsed configurations
-		// for _, config := range services {
-		// 	log.Printf("Name: %s\n", config.Name)
-		// 	log.Printf("Files: %v\n", config.Files)
-		// 	log.Printf("Restart Commands: %v\n", config.RestartCmds)
-		// 	log.Printf("Systemd Services: %v\n", config.RestartSystemdServices)
-		// 	log.Printf("Restart Time Host: %v\n\n", config.RestartTimeHost)
-		// 	log.Printf("Restart timeout: %v\n\n", config.RestartTimeout)
-		// }
-
 
 		ut = get_dns_ut()
 
@@ -1519,31 +1506,10 @@ func templateLoop(skipIF *bool) {
 
 		startFilesInvalid := getFilesInvalid()
 		if getIsFilesInvalid() {
-			// log.Print("\n\n\n\n")
-			// slog.Info(fmt.Sprintln(strings.Repeat("=", 50)))
-			// slog.Info(fmt.Sprintln(strings.Repeat("=", 50)))
-			// log.Print("\n")
 
 			slog.Info(fmt.Sprintf("slept until: %v", sleep_ut))
 			slog.Info(fmt.Sprintf("prefix: %v", currentIPv6Prefix))
 
-
-			// err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-			// err = loadAndSaveNamedConf(currentIPv6Prefix)
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
-			//
-			// err = loadAndSaveDnsmasqConf(currentIPv6Prefix, currentIPv6Prefix_str)
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
 
 			for _, service := range services {
 				changed, err := repSaveFileAndFolder(service, currentIPv6Prefix)
@@ -1559,22 +1525,12 @@ func templateLoop(skipIF *bool) {
 				}
 			}
 
-			// err = restart_dns()
-			// if err != nil {
-			// 	log.Println("Error:", err)
-			// 	return
-			// }
 
 			lastIPv6Prefix = currentIPv6Prefix
 			slog.Info("Files updated successfully.")
 
 
-			// log.Println(strings.Repeat("=", 50))
-			// log.Println(strings.Repeat("=", 50))
 		}
-
-		// Sleep for the specified interval before checking again
-		// time.Sleep(checkInterval)
 
 		filesInvalidDone(startFilesInvalid)
 	}
