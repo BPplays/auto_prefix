@@ -20,6 +20,7 @@ import (
 	"os/user"
 	"reflect"
 	"runtime"
+	"slices"
 	"sync"
 
 	// "os/exec"
@@ -299,7 +300,7 @@ func defHashCompare(a, b *[]byte) (bool) {
 	bHash, err := defHash(b)
 	if err != nil { return false }
 
-	return aHash == bHash
+	return slices.Equal((*aHash), (*bHash))
 }
 
 func defHash(input *[]byte) (*[]byte, error) {
@@ -1611,16 +1612,16 @@ func main() {
 
 	wg.Go(func() {
 		st := time.Now()
-		shortSleepTime := (25 * time.Second) - time.Since(st)
+		// shortSleepTime := (25 * time.Second) - time.Since(st)
 		longSleepTime := (100 * time.Second) - time.Since(st)
 		for {
 			st := time.Now()
 			filesInvalidAdd(1)
 
-			shortSleepTime = (25 * time.Second) - time.Since(st)
+			// shortSleepTime = (25 * time.Second) - time.Since(st)
 			longSleepTime = (100 * time.Second) - time.Since(st)
 			time.Sleep(min(
-				shortSleepTime,
+				// shortSleepTime,
 				longSleepTime,
 			))
 
