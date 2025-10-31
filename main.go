@@ -890,7 +890,7 @@ func restartServices(config Service) {
 		for _, err := range errs {
 			switch err {
 			default:
-				slog.Error(fmt.Sprintf("restart cmd err: %v\ncmd: %v", err, ))
+				slog.Error(fmt.Sprintf("restart cmd err: %v", err, ))
 			case nil:
 			case errors.ErrUnsupported:
 			}
