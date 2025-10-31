@@ -7,7 +7,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"math"
 	"math/rand"
@@ -21,7 +23,6 @@ import (
 	"runtime"
 	"slices"
 	"sync"
-    "log/slog"
 
 	// "os/exec"
 	"encoding/json"
@@ -73,6 +74,7 @@ var (
 
 )
 
+var logFileWriter lumberjack.Logger
 var globalStartTime time.Time
 
 var filesInvalid int = 1
@@ -1461,6 +1463,9 @@ func templateLoop(skipIF *bool) {
 
 	// Start an infinite loop
 	for {
+		fmt.Fprintln(&logFileWriter)
+		fmt.Fprintln(&logFileWriter)
+		fmt.Fprintln(&logFileWriter)
 		slog.Info("starting loop")
 		if !(*skipIF) {
 			err := get_interfaceName_file()
@@ -1613,7 +1618,7 @@ func main() {
 			return
 		}
 		defer cntxt.Release()
-		logFile := lumberjack.Logger{
+		logFileWriter = lumberjack.Logger{
 			Filename:   *logFile,
 			MaxSize:    5,    // megabytes
 			MaxBackups: 3,    // keep up to n old log files
@@ -1622,7 +1627,7 @@ func main() {
 
 		// log.SetOutput(&logFile)
 
-		handl := slog.NewTextHandler(&logFile, &slog.HandlerOptions{})
+		handl := slog.NewTextHandler(&logFileWriter, &slog.HandlerOptions{})
 		// if you don't do this it prints to log maybe? what?
 		slog.SetDefault(slog.New(handl))
 	}
