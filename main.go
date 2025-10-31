@@ -1622,7 +1622,9 @@ func main() {
 
 		// log.SetOutput(&logFile)
 
-		slog.NewTextHandler(&logFile, &slog.HandlerOptions{})
+		handl := slog.NewTextHandler(&logFile, &slog.HandlerOptions{})
+		// if you don't do this it prints to log maybe? what?
+		slog.SetDefault(slog.New(handl))
 	}
 
 	if err := setNiceness(*niceness); err != nil {
