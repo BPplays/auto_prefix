@@ -807,7 +807,7 @@ func runRestartCmds(ctx context.Context, config Service) (errs []error) {
 		errStr := errBuf.String()
 		if err != nil {
 			if len(strings.TrimSpace(errStr)) >= 1 {
-				err = fmt.Errorf("%w, cmd: %v", ErrStdErrNotEmpty, errBuf.String())
+				err = fmt.Errorf("%w, stderr: %v", ErrStdErrNotEmpty, errBuf.String())
 			}
 		}
 
