@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"slices"
 	"sync"
+    "log/slog"
 
 	// "os/exec"
 	"encoding/json"
@@ -73,6 +74,8 @@ var (
 
 )
 
+var globalStartTime time.Time
+
 var filesInvalid int = 1
 var filesInvalidMu sync.RWMutex
 
@@ -81,7 +84,7 @@ var globalServices []Service
 var globalConfigMu sync.RWMutex
 var globalServicesMu sync.RWMutex
 
-var HostFound map[Host]bool = make(map[Host]bool)
+var HostFound map[HostCheck]bool = make(map[HostCheck]bool)
 var hostFoundMu sync.RWMutex
 
 var prefixNotFound error = errors.New("no prefix found")
@@ -103,15 +106,18 @@ type jsonIPv6Prefix struct {
 }
 
 
-type Host struct {
+type HostCheck struct {
 	VarName                 string        `yaml:"var_name"`
 	Host                 string        `yaml:"host"`
+	Type                 string        `yaml:"type"`
+	Port                 int        `yaml:"port"`
+
 }
 
 type Config struct {
 	Source                 string        `yaml:"source"`
 	Url                 string        `yaml:"url"`
-	Hosts                 []Host        `yaml:"hosts"`
+	Hosts                 []HostCheck        `yaml:"hosts"`
 	HostsCheckTime                 float64        `yaml:"hosts_check_time"`
 }
 
@@ -205,7 +211,7 @@ func getFilesInvalid() (int) {
 	return filesInvalid
 }
 
-func setHostFoundVal(h Host, b bool) () {
+func setHostFoundVal(h HostCheck, b bool) () {
 	hostFoundMu.Lock()
 	defer hostFoundMu.Unlock()
 	HostFound[h] = b
@@ -218,7 +224,7 @@ func setHostFoundVal(h Host, b bool) () {
 // }
 
 
-func getHostFound() (map[Host]bool) {
+func getHostFound() (map[HostCheck]bool) {
 	hostFoundMu.RLock()
 	defer hostFoundMu.RUnlock()
 	return maps.Clone(HostFound)
@@ -276,7 +282,9 @@ func logTitleln(v ...any) {
 		strs = append(strs, fmt.Sprint(an))
 	}
 
-	log.Printf("=== %v ===\n", strings.Join(strs, " "))
+	lg := fmt.Sprintf("=== %v ===\n", strings.Join(strs, " "))
+
+	slog.Info(lg, slog.Duration("開始以来", time.Since(globalStartTime)))
 }
 
 func defHashFile(path string) (*[]byte, error) {
@@ -522,7 +530,7 @@ func loadServices(dir string) ([]Service, error) {
 		if !d.IsDir() && (filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml") {
 			fileConfigs, err := parseServiceFile(path)
 			if err != nil {
-				log.Printf("Error parsing file %s: %v", path, err)
+				slog.Error(fmt.Sprintf("Error parsing file %s: %v", path, err))
 				return nil // Skip invalid files but continue processing others
 			}
 			configs = append(configs, fileConfigs...)
@@ -597,7 +605,7 @@ func appendVarMap(a *map[string]any, b *map[string]any) *map[string]any {
 
 func varHostFoundAdd(
 	a *map[string]any,
-	hostFound *map[Host]bool,
+	hostFound *map[HostCheck]bool,
 ) *map[string]any {
 	out := make(map[string]any)
 
@@ -819,7 +827,7 @@ func restartServices(config Service) {
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		log.Println("cant get hostname. Error:", err)
+		slog.Error(fmt.Sprint("cant get hostname. Error:", err))
 		wait_time = wait_time_def
 	} else {
 		spl := strings.Split(hostname, ".")
@@ -850,7 +858,8 @@ func restartServices(config Service) {
 		for _, err := range errs {
 			switch err {
 			default:
-				log.Printf("systemd err: %v", err)
+				slog.Error(fmt.Sprintf("systemd err: %v", err))
+
 			case nil:
 			case errors.ErrUnsupported:
 			}
@@ -863,7 +872,7 @@ func restartServices(config Service) {
 		for _, err := range errs {
 			switch err {
 			default:
-				log.Printf("freebsd service err: %v", err)
+				slog.Error(fmt.Sprintf("freebsd service err: %v", err))
 			case nil:
 			case errors.ErrUnsupported:
 			}
@@ -876,7 +885,7 @@ func restartServices(config Service) {
 		for _, err := range errs {
 			switch err {
 			default:
-				log.Printf("freebsd service err: %v", err)
+				slog.Error(fmt.Sprintf("restart cmd err: %v", err))
 			case nil:
 			case errors.ErrUnsupported:
 			}
@@ -898,14 +907,14 @@ func repSaveFileAndFolder(
 
 		entries, err := os.ReadDir(folder.From)
 		if err != nil {
-			log.Printf("error replacing vars: %v\n", err)
+			slog.Error(fmt.Sprintf("error replacing vars: %v", err))
 			continue
 		}
 		files := make([]fs.FileInfo, 0, len(entries))
 		for _, entry := range entries {
 			info, err := entry.Info()
 			if err != nil {
-				log.Printf("error replacing vars: %v\n", err)
+				slog.Error(fmt.Sprintf("error replacing vars: %v", err))
 				continue
 			}
 			files = append(files, info)
@@ -932,13 +941,13 @@ func repSaveFileAndFolder(
 		// log.Printf("reading: %v\n", file.From)
 		content, err := os.ReadFile(file.From)
 		if err != nil {
-			log.Printf("error replacing vars: %v\n", err)
+			slog.Error(fmt.Sprintf("error replacing vars: %v", err))
 			continue
 		}
 
 		replacedContent, err := replaceVars(&content, &prefix, service)
 		if err != nil {
-			log.Printf("error replacing vars: %v\n", err)
+			slog.Error(fmt.Sprintf("error replacing vars: %v", err))
 			continue
 		}
 
@@ -949,7 +958,10 @@ func repSaveFileAndFolder(
 		switch {
 		// case os.IsNotExist(err):
 		case err != nil:
-			log.Printf("error reading final file skipping hash compare: %v\n", err)
+			slog.Error(fmt.Sprintf(
+				"error reading final file skipping hash compare: %v",
+				err,
+			))
 			changed = true
 
 		default:
@@ -961,15 +973,19 @@ func repSaveFileAndFolder(
 
 		err = os.WriteFile(file.To, bReplacedContent, file.Perms.FileMode())
 		if err != nil {
-			log.Printf("error replacing vars: %v\n", err)
+			slog.Error(fmt.Sprintf("error replacing vars: %v", err))
 		}
 
 		usr, err := user.Lookup(file.Owner)
 		if err != nil {
-			log.Printf("[%v] err looking up owner by name trying uid: %v\n", file.Owner, err)
+			slog.Error(fmt.Sprintf(
+				"[%v] err looking up owner by name trying uid: %v",
+				file.Owner,
+				err,
+			))
 			usr, err = user.LookupId(file.Owner)
 			if err != nil {
-				log.Printf("err looking up owner: %v\n", err)
+				slog.Error(fmt.Sprintf("err looking up owner: %v", err))
 				continue
 			}
 		}
@@ -978,7 +994,7 @@ func repSaveFileAndFolder(
 		if err != nil {
 			grp, err = user.LookupGroupId(file.Group)
 			if err != nil {
-				log.Printf("err looking up group: %v\n", err)
+				slog.Error(fmt.Sprintf("err looking up group: %v", err))
 				continue
 			}
 		}
@@ -990,9 +1006,11 @@ func repSaveFileAndFolder(
 		if err != nil { continue }
 
 		err = os.Chown(file.To, uid, gid)
-		if err != nil { log.Printf("erring chowning: %v\n", err) }
+		if err != nil {
+			slog.Error(fmt.Sprintf("erring chowning: %v", err))
+		}
 
-		log.Printf("saving: %v\n", file.To)
+		slog.Info(fmt.Sprintf("saving: %v\n", file.To))
 	}
 
 	return changed, nil
@@ -1004,7 +1022,8 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 
 	tsource, err := source.FromString(config.Source)
 	if err != nil {
-		log.Fatalln("config source error")
+		slog.Error("config source error")
+		os.Exit(1)
 		return netip.Prefix{}, err
 	}
 
@@ -1038,14 +1057,14 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 
 			resp, err := client.Get(config.Url)
 			if err != nil {
-				log.Println(err)
+				slog.Error(fmt.Sprint(err))
 				continue
 			}
 			defer resp.Body.Close()
 
 			var pr struct{ Prefix netip.Prefix `json:"prefix"` }
 			if err := json.NewDecoder(resp.Body).Decode(&pr); err != nil {
-				log.Println(err)
+				slog.Error(fmt.Sprint(err))
 			} else {
 				found_prefix = true
 			}
@@ -1055,13 +1074,13 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 
 
 		if found_prefix {
-			log.Printf("found new prefix: %v\n", prefix.String())
+			slog.Info(fmt.Sprintf("found new prefix: %v\n", prefix.String()))
 			if !noFile {
 				updateIPv6Prefix(prefix)
 			}
 			break
 		} else if !noFile {
-			log.Println("did not find new prefix")
+			slog.Info("did not find new prefix")
 			prefix, err := readIPv6PrefixFromFile()
 			if err != nil {
 				continue
@@ -1118,13 +1137,14 @@ func get_addr_from_if(interfaceName string) (netip.Addr, error) {
 	for _, addr := range addrs {
 		ip, err = addrToNetIPaddr(addr)
 		if err != nil {
-			log.Fatalln("can't parse addr")
+			slog.Error("can't parse addr")
+			os.Exit(1)
 		}
 
 		if isValidIPprefixAddress(ip) {
 			p := netip.PrefixFrom(ip, Prefix_length)
 			ipv6Prefix = &p
-			log.Printf("ipnet: %v\n", ipv6Prefix.Addr().String())
+			slog.Info(fmt.Sprintf("ipnet: %v\n", ipv6Prefix.Addr().String()))
 
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
 			found_addr = true
@@ -1177,7 +1197,7 @@ func updateIPv6Prefix(newPrefix netip.Prefix) error {
 	var no_stored bool
 	storedPrefix, err := readIPv6PrefixFromFile()
 	if err != nil {
-		log.Println("can't read prefix", err)
+		slog.Error(fmt.Sprint("can't read prefix", err))
 		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix})
 	}
 
@@ -1189,12 +1209,13 @@ func updateIPv6Prefix(newPrefix netip.Prefix) error {
 
 
 	// If no prefix exists or the prefix is different, write new one
-	if no_stored || *storedPrefix != newPrefix {
-		log.Println("Updating IPv6 prefix to:", newPrefix.String())
+	if (no_stored) || ((*storedPrefix) != newPrefix) {
+		slog.Error(fmt.Sprint("Updating IPv6 prefix to:", newPrefix.String()))
+
 		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix})
 	}
 
-	log.Println("IPv6 prefix is unchanged.")
+	slog.Info("IPv6 prefix is unchanged.")
 	return nil
 }
 
@@ -1335,7 +1356,62 @@ func loadConfigs(ctx context.Context) (error) {
 	return nil
 }
 
-func pingHosts(ctx context.Context, conf Config) {
+func pingHost(
+	ctx context.Context,
+	host HostCheck,
+	retries int,
+) (bool, error) {
+	result := false
+	interval := 1 * time.Second
+
+
+	for range retries {
+		pctx, cancel := context.WithTimeout(
+			ctx,
+			(interval) + (10 * time.Millisecond),
+			)
+		defer cancel()
+
+		pinger, err := probing.NewPinger(host.Host)
+		if err != nil {
+			slog.Error(fmt.Sprintf("err making pinger: %v", err))
+			return false, err
+		}
+
+		// pinger.Count = 7
+		pinger.Interval = interval
+		pinger.SetPrivileged(true)
+		if strings.ToLower(runtime.GOOS) != "freebsd" {
+			pinger.SetDoNotFragment(true)
+		}
+
+
+		err = pinger.RunWithContext(pctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				slog.Error(fmt.Sprintf("ctx err running pinger: %v", err))
+				result = false
+			}
+
+			slog.Error(fmt.Sprintf("err running pinger: %v", err))
+			result = false
+		}
+
+		stats := pinger.Statistics()
+		if stats.PacketsRecv > 0 {
+			slog.Info(fmt.Sprintf("pinging: %v, result: true", host.Host))
+			result = true
+			break
+		} else {
+			slog.Info(fmt.Sprintf("pinging: %v, result: false", host.Host))
+			result = false
+		}
+	}
+
+	return result, nil
+}
+
+func checkHosts(ctx context.Context, conf Config) {
 	var wg sync.WaitGroup
 	prevHostFound := getHostFound()
 	logTitleln("pinging hosts")
@@ -1345,52 +1421,27 @@ func pingHosts(ctx context.Context, conf Config) {
 			setHostFoundVal(host, false)
 		}
 
+		var checkFunc func(context.Context, HostCheck, int) (bool, error)
+
+		switch host.Type {
+		case "icmp":
+			if host.Port > 0 {
+				slog.Warn("setting host port does nothing using `icmp`")
+			}
+			checkFunc = pingHost
+
+		}
+
 
 		wg.Add(1)
-		go func(host Host) {
+		go func(host HostCheck) {
 			defer wg.Done()
-
-			pinger, err := probing.NewPinger(host.Host)
+			result, err := checkFunc(ctx, host, 7)
 			if err != nil {
-				log.Printf("err making pinger: %v\n", err)
 				return
 			}
 
-			pinger.Count = 7
-			pinger.Interval = 1 * time.Second
-			pinger.SetPrivileged(true)
-			if strings.ToLower(runtime.GOOS) != "freebsd" {
-				pinger.SetDoNotFragment(true)
-			}
-
-			pctx, cancel := context.WithTimeout(
-				ctx,
-				(pinger.Interval * time.Duration(pinger.Count)) + 100 * time.Millisecond,
-			)
-			defer cancel()
-
-			err = pinger.RunWithContext(pctx)
-			if err != nil {
-				if ctx.Err() != nil {
-					log.Printf("ctx err running pinger: %v\n", err)
-					setHostFoundVal(host, false)
-					return
-				}
-
-				setHostFoundVal(host, false)
-				log.Printf("err running pinger: %v\n", err)
-				return
-			}
-
-			stats := pinger.Statistics()
-			if stats.PacketsRecv > 0 {
-				setHostFoundVal(host, true)
-				log.Printf("pinging: %v, result: true", host.Host)
-			} else {
-				setHostFoundVal(host, false)
-				log.Printf("pinging: %v, result: false", host.Host)
-			}
-
+			setHostFoundVal(host, result)
 		}(host)
 	}
 	wg.Wait()
@@ -1411,11 +1462,11 @@ func templateLoop(skipIF *bool) {
 
 	// Start an infinite loop
 	for {
-		log.Println("starting loop")
+		slog.Info("starting loop")
 		if !(*skipIF) {
 			err := get_interfaceName_file()
 			if err != nil {
-				log.Printf("get IF err: %v\n", err)
+				slog.Error(fmt.Sprintf("get IF err: %v\n", err))
 				if interfaceName == "" {
 					time.Sleep(2 * time.Second)
 					continue
@@ -1454,7 +1505,7 @@ func templateLoop(skipIF *bool) {
 		// Get the current IPv6 prefix
 		currentIPv6Prefix, err := get_prefix(config, false)
 		if err != nil {
-			log.Println("Error:", err)
+			slog.Error(fmt.Sprintln("Error:", err))
 			return
 		}
 
@@ -1463,13 +1514,13 @@ func templateLoop(skipIF *bool) {
 
 		startFilesInvalid := getFilesInvalid()
 		if getIsFilesInvalid() {
-			log.Print("\n\n\n\n")
-			log.Println(strings.Repeat("=", 50))
-			log.Println(strings.Repeat("=", 50))
-			log.Print("\n")
+			// log.Print("\n\n\n\n")
+			// slog.Info(fmt.Sprintln(strings.Repeat("=", 50)))
+			// slog.Info(fmt.Sprintln(strings.Repeat("=", 50)))
+			// log.Print("\n")
 
-			log.Printf("slept until: %v\n\n", sleep_ut)
-			log.Printf("prefix: %v\n", currentIPv6Prefix)
+			slog.Info(fmt.Sprintf("slept until: %v\n\n", sleep_ut))
+			slog.Info(fmt.Sprintf("prefix: %v\n", currentIPv6Prefix))
 
 
 			// err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
@@ -1492,7 +1543,8 @@ func templateLoop(skipIF *bool) {
 			for _, service := range services {
 				changed, err := repSaveFileAndFolder(service, currentIPv6Prefix)
 				if err != nil {
-					log.Println("Error:", err)
+					slog.Error(fmt.Sprintln("Error:", err))
+
 					// return
 				}
 
@@ -1509,11 +1561,11 @@ func templateLoop(skipIF *bool) {
 			// }
 
 			lastIPv6Prefix = currentIPv6Prefix
-			log.Printf("Files updated successfully.\n\n")
+			slog.Info("Files updated successfully.\n\n")
 
 
-			log.Println(strings.Repeat("=", 50))
-			log.Println(strings.Repeat("=", 50))
+			// log.Println(strings.Repeat("=", 50))
+			// log.Println(strings.Repeat("=", 50))
 		}
 
 		// Sleep for the specified interval before checking again
@@ -1528,6 +1580,7 @@ func init() {
 	ctx := context.Background()
 	setEtcDirs()
 	loadConfigs(ctx)
+	globalStartTime = time.Now()
 }
 
 
@@ -1554,28 +1607,32 @@ func main() {
 		}
 		d, err := cntxt.Reborn()
 		if err != nil {
-			log.Fatalf("unable to daemonize: %v", err)
+			slog.Error(fmt.Sprintf("unable to daemonize: %v", err))
+			os.Exit(1)
 		}
 		if d != nil {
 			return
 		}
 		defer cntxt.Release()
-
-		// Configure log rotation
-		log.SetOutput(&lumberjack.Logger{
+		logFile := lumberjack.Logger{
 			Filename:   *logFile,
 			MaxSize:    5,    // megabytes
 			MaxBackups: 3,    // keep up to n old log files
 			MaxAge:     28,   // days
-		})
+		}
+
+		// log.SetOutput(&logFile)
+
+		slog.NewTextHandler(&logFile, &slog.HandlerOptions{})
 	}
 
 	if err := setNiceness(*niceness); err != nil {
-		log.Printf("warning: failed to set priority: %v", err)
+		slog.Warn(fmt.Sprintf("warning: failed to set priority: %v", err))
 	}
 
 
-	log.Println("starting program")
+	slog.Info("starting program")
+	// log.Println("starting program")
 	// log.Println("using if:", interfaceName)
 
 
@@ -1591,10 +1648,10 @@ func main() {
 		for {
 			st := time.Now()
 			conf := getGlobalConfig()
-			pingHosts(ctx, conf)
+			checkHosts(ctx, conf)
 
 			sleepTime := time.Duration(conf.HostsCheckTime * float64(time.Second)) - time.Since(st)
-			log.Printf("ping sleeping for %v\n", sleepTime)
+			slog.Info(fmt.Sprintf("ping sleeping for %v\n", sleepTime))
 			time.Sleep(sleepTime)
 		}
 	})
