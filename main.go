@@ -1394,8 +1394,23 @@ func pingHost(
 
 		err = pinger.RunWithContext(pctx)
 		if err != nil {
-			if pctx.Err() != nil {
-				// slog.Error(fmt.Sprintf("ctx err running pinger: %v", err))
+			switch pctx.Err() {
+			case context.DeadlineExceeded:
+				result = false
+			case context.Canceled:
+				result = false
+			default:
+				slog.Error(fmt.Sprintf("ctx err running pinger: %v", err))
+				result = false
+			}
+
+			switch err {
+			case context.DeadlineExceeded:
+				result = false
+			case context.Canceled:
+				result = false
+			default:
+				slog.Error(fmt.Sprintf("err running pinger: %v", err))
 				result = false
 			}
 
