@@ -964,7 +964,6 @@ func repSaveFileAndFolder(
 			log.Printf("error replacing vars: %v\n", err)
 		}
 
-		fmt.Printf("[test whole] file: %v\n", file)
 		usr, err := user.Lookup(file.Owner)
 		if err != nil {
 			log.Printf("[%v] err looking up owner by name trying uid: %v\n", file.Owner, err)
@@ -1499,8 +1498,8 @@ func templateLoop(skipIF *bool) {
 
 				if changed {
 					logTitleln("some files changed")
+					restartServices(service)
 				}
-				restartServices(service)
 			}
 
 			// err = restart_dns()
