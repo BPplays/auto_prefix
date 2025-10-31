@@ -4,10 +4,10 @@ go 1.25.3
 
 require (
 	github.com/coreos/go-systemd/v22 v22.6.0
+	github.com/lmittmann/tint v1.1.2
 	github.com/mattn/go-runewidth v0.0.19
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/quic-go/quic-go v0.55.0
-	github.com/lmittmann/tint v1.1.2
 	github.com/seancfoley/ipaddress-go v1.7.1
 	github.com/sevlyar/go-daemon v0.1.6
 	golang.org/x/sys v0.37.0
