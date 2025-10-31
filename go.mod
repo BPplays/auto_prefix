@@ -4,6 +4,7 @@ go 1.25.3
 
 require (
 	github.com/coreos/go-systemd/v22 v22.6.0
+	github.com/mattn/go-runewidth v0.0.19
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/quic-go/quic-go v0.55.0
 	github.com/seancfoley/ipaddress-go v1.7.1
@@ -14,6 +15,8 @@ require (
 )
 
 require (
+	github.com/clipperhouse/stringish v0.1.1 // indirect
+	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect

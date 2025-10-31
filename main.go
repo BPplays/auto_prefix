@@ -7,7 +7,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"io/fs"
 	"log/slog"
 	"maps"
@@ -47,6 +46,7 @@ import (
 	"github.com/prometheus-community/pro-bing"
 	"github.com/sevlyar/go-daemon"
 	"gopkg.in/natefinch/lumberjack.v2"
+	"github.com/mattn/go-runewidth"
 )
 
 var (
@@ -285,7 +285,11 @@ func logTitleln(v ...any) {
 
 	lg := fmt.Sprintf("=== %v ===", strings.Join(strs, " "))
 
+	topBot := strings.Repeat("=", runewidth.StringWidth(lg))
+
+	slog.Info(topBot)
 	slog.Info(lg, slog.Duration("開始以来", time.Since(globalStartTime)))
+	slog.Info(topBot)
 }
 
 func defHashFile(path string) (*[]byte, error) {
@@ -1463,10 +1467,7 @@ func templateLoop(skipIF *bool) {
 
 	// Start an infinite loop
 	for {
-		fmt.Fprintln(&logFileWriter)
-		fmt.Fprintln(&logFileWriter)
-		fmt.Fprintln(&logFileWriter)
-		slog.Info("starting loop")
+		logTitleln("starting loop")
 		if !(*skipIF) {
 			err := get_interfaceName_file()
 			if err != nil {
