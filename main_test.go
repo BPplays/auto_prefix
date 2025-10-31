@@ -190,4 +190,22 @@ func TestParsing(t *testing.T) {
 
 	})
 
+
+	t.Run("hash comp", func(t *testing.T) {
+		t.Parallel()
+
+
+		a := []byte("testjdfkslf")
+		b := []byte("testjdfkslf")
+		c := []byte("1784923584")
+		if !defHashCompare(&a, &b) {
+			t.Error("hash compare fail to get 2 things that are the same")
+		}
+
+		if defHashCompare(&a, &c) {
+			t.Error("hash compare fail to get 2 things that are the different")
+		}
+
+	})
+
 }
