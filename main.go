@@ -47,6 +47,7 @@ import (
 	"github.com/sevlyar/go-daemon"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"github.com/mattn/go-runewidth"
+	"github.com/lmittmann/tint"
 )
 
 var (
@@ -1587,6 +1588,13 @@ func main() {
 		handl := slog.NewTextHandler(&logFileWriter, &slog.HandlerOptions{})
 		// if you don't do this it prints to log maybe? what?
 		slog.SetDefault(slog.New(handl))
+	} else {
+
+		handl := tint.NewHandler(os.Stdout, &tint.Options{
+			TimeFormat: "2006年01月02日 15時04分05.000秒",
+		})
+		slog.SetDefault(slog.New(handl))
+
 	}
 
 	if err := setNiceness(*niceness); err != nil {
