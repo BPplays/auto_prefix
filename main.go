@@ -62,7 +62,6 @@ const (
 	progName = "auto_prefix"
 	Prefix_length_default = 56
 	prefix_full_subnet_len = 64
-	restartMode       = "replace" // or "force-reload"
 	checkInterval  = 5 * time.Second
 	ipv6MaxAddr = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
 
@@ -130,13 +129,16 @@ type Service struct {
 	RestartCmds          [][]string      `yaml:"restart_cmds"`
 
 	SystemdEnable bool    `yaml:"systemd_enable"`
+	SystemdEnableCmdFallback bool    `yaml:"systemd_enable_cmd_fallback"`
 	RestartSystemdServices []string    `yaml:"restart_systemd_services"`
 
 	FreebsdServiceEnable bool    `yaml:"freebsd_service_enable"`
+	FreebsdServiceEnableCmdFallback bool    `yaml:"freebsd_service_enable_cmd_fallback"`
 	RestartFreebsdServices []string    `yaml:"restart_freebsd_services"`
 
 	RestartTimeHost      float64           `yaml:"restart_time_host"`
 	RestartTimeout      int           `yaml:"restart_timeout"`
+	HostIndex      int           `yaml:"host_index"`
 	Vars      map[string]any           `yaml:"vars"`
 }
 
@@ -660,7 +662,15 @@ func replaceVars(
 	// rev_dns := IPv6PrefixToReverseDNSprefixOnly(*prefix, 64, 0)
 	revPrefix, _, err := IPv6PrefixToReverseDnsPrefixSuffix(*prefix)
 	if err != nil {
-		revPrefix = "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2"
+		revPrefix = "3.2.1.f.f.f.f.8.b.d.0.1.0.0.2"
+	}
+
+	revPrefix48, _, err := IPv6PrefixToReverseDnsPrefixSuffix(netip.PrefixFrom(
+		(*prefix).Addr(),
+		48,
+	))
+	if err != nil {
+		revPrefix48 = "f.f.f.f.8.b.d.0.1.0.0.2"
 	}
 
 	getIPv6SubnetCache := make(map[string]string)
@@ -669,6 +679,7 @@ func replaceVars(
 		"ut_10":  ut,
 		"ipv6_prefix":   ipstr,
 		"ipv6_revdns_prefix": revPrefix,
+		"ipv6_revdns_prefix_48": revPrefix48,
 		"pd_size": fmt.Sprint((*prefix).Bits()),
 	}
 
@@ -723,6 +734,30 @@ func replaceVars(
 
 				mixed := mixPrefixIP(prefix, &ip)
 				_, suffix, err := IPv6PrefixToReverseDnsPrefixSuffix(*mixed)
+				if err != nil {
+					return ""
+				}
+
+				return suffix
+			},
+
+			"get_reverse_dns_ip_len": func(ipStr string, bits int) (string) {
+				if pref, exists := mixPrefixIPCache[ipStr]; exists {
+					return pref
+				}
+
+				ip, err := looseParseSuffix(ipStr)
+				if err != nil {
+					ip = netip.MustParseAddr(ipv6MaxAddr)
+				}
+
+				mixed := mixPrefixIP(prefix, &ip)
+				_, suffix, err := IPv6PrefixToReverseDnsPrefixSuffix(
+					netip.PrefixFrom(
+						(*mixed).Addr(),
+						bits,
+					),
+				)
 				if err != nil {
 					return ""
 				}
@@ -817,49 +852,67 @@ func runRestartCmds(ctx context.Context, config Service) (errs []error) {
 	return errs
 }
 
-
-func restartServices(config Service) {
-	logTitleln("Restarting services")
-
-	if config.RestartTimeout <= 0 {
-		config.RestartTimeout = 10
-	}
-
-	dev_name := ""
-	wait_time := 0.0
-	wait_time_mul := config.RestartTimeHost
-	wait_time_def := rand.Float64() * 15
+func inferHostIndex() (hostIndex int, err error) {
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		slog.Error(fmt.Sprint("cant get hostname. Error:", err))
-		wait_time = wait_time_def
-	} else {
-		spl := strings.Split(hostname, ".")
-		dev_name = spl[0]
+		return -1, err
+	}
 
-		numericStr := ""
-		for _, char := range dev_name {
-			if (char >= '0' && char <= '9') || char == '.' {
-				numericStr += string(char)
-			}
-		}
+	spl := strings.Split(hostname, ".")
+	dev_name := spl[0]
 
-		// Convert string to float64
-		num, err := strconv.ParseFloat(numericStr, 64)
-		if err != nil {
-			// log.Println("Error converting string to float64:", err)
-			wait_time = wait_time_def
-		} else {
-			wait_time = (num-1) * wait_time_mul
+	numericStr := ""
+	for _, char := range dev_name {
+		if (char >= '0' && char <= '9') || char == '.' {
+			numericStr += string(char)
 		}
 	}
 
-	time.Sleep(time.Duration(wait_time * float64(time.Second)))
+	// Convert string to float64
+	hostIndex, err = strconv.Atoi(numericStr)
+	if err != nil {
+		return -1, err
+	}
+
+	return hostIndex, nil
+}
+
+
+func restartServices(service Service) {
+	logTitleln("Restarting services")
+
+	if service.RestartTimeout <= 0 {
+		service.RestartTimeout = 10
+	}
+
+	waitTime := 0.0
+	waitTimeMul := service.RestartTimeHost
+	waitTimeDef := rand.Float64() * 15
+
+	if service.HostIndex >= 1 {
+		waitTime = (float64(service.HostIndex-1)) * waitTimeMul
+	} else {
+
+		hostIndex, err := inferHostIndex()
+		if err != nil {
+			slog.Warn(fmt.Sprintf(
+				"Can't infering host index and none manually specified: %v",
+				err,
+			))
+			waitTime = waitTimeDef
+		} else {
+			waitTime = (float64(hostIndex-1)) * waitTimeMul
+		}
+
+	}
+
+
+	time.Sleep(time.Duration(waitTime) * time.Second)
 
 	ctx := context.Background()
-	if config.SystemdEnable {
-		errs := restartSystemdServices(ctx, config)
+	if service.SystemdEnable {
+		errs := restartSystemdServices(ctx, service)
 		for _, err := range errs {
 			switch err {
 			default:
@@ -872,8 +925,8 @@ func restartServices(config Service) {
 		}
 	}
 
-	if config.FreebsdServiceEnable {
-		errs := restartFreebsdServices(ctx, config)
+	if service.FreebsdServiceEnable {
+		errs := restartFreebsdServices(ctx, service)
 		for _, err := range errs {
 			switch err {
 			default:
@@ -885,12 +938,41 @@ func restartServices(config Service) {
 		}
 	}
 
-	if len(config.RestartCmds) > 0 {
-		errs := runRestartCmds(ctx, config)
+	cmdsErred := false
+	if len(service.RestartCmds) > 0 {
+		errs := runRestartCmds(ctx, service)
 		for _, err := range errs {
 			switch err {
 			default:
 				slog.Error(fmt.Sprintf("restart cmd err: %v", err, ))
+				cmdsErred = true
+			case nil:
+			// case errors.ErrUnsupported:
+			}
+
+		}
+	}
+
+	if service.SystemdEnableCmdFallback && cmdsErred {
+		errs := restartSystemdServices(ctx, service)
+		for _, err := range errs {
+			switch err {
+			default:
+				slog.Error(fmt.Sprintf("systemd err: %v", err))
+
+			case nil:
+			case errors.ErrUnsupported:
+			}
+
+		}
+	}
+
+	if service.FreebsdServiceEnableCmdFallback && cmdsErred {
+		errs := restartFreebsdServices(ctx, service)
+		for _, err := range errs {
+			switch err {
+			default:
+				slog.Error(fmt.Sprintf("freebsd service err: %v", err))
 			case nil:
 			case errors.ErrUnsupported:
 			}

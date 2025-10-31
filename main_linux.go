@@ -11,6 +11,10 @@ import (
 	"github.com/coreos/go-systemd/v22/dbus"
 )
 
+const (
+	restartMode       = "replace" // or "force-reload"
+)
+
 func restartSystemdServices(ctx context.Context, config Service) ([]error) {
 	var errs []error
 
