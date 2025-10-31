@@ -287,9 +287,9 @@ func logTitleln(v ...any) {
 
 	topBot := strings.Repeat("=", runewidth.StringWidth(lg))
 
-	slog.Info(topBot)
+	slog.Info(fmt.Sprintf("\"%v\"", topBot))
 	slog.Info(lg, slog.Duration("開始以来", time.Since(globalStartTime)))
-	slog.Info(topBot)
+	slog.Info(fmt.Sprintf("\"%v\"", topBot))
 }
 
 func defHashFile(path string) (*[]byte, error) {
