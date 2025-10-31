@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
-	"log"
 	"maps"
 	"math"
 	"math/rand"
