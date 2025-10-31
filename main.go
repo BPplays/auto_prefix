@@ -281,7 +281,7 @@ func logTitleln(v ...any) {
 		strs = append(strs, fmt.Sprint(an))
 	}
 
-	lg := fmt.Sprintf("=== %v ===\n", strings.Join(strs, " "))
+	lg := fmt.Sprintf("=== %v ===", strings.Join(strs, " "))
 
 	slog.Info(lg, slog.Duration("開始以来", time.Since(globalStartTime)))
 }
@@ -1009,7 +1009,7 @@ func repSaveFileAndFolder(
 			slog.Error(fmt.Sprintf("erring chowning: %v", err))
 		}
 
-		slog.Info(fmt.Sprintf("saving: %v\n", file.To))
+		slog.Info(fmt.Sprintf("saving: %v", file.To))
 	}
 
 	return changed, nil
@@ -1073,7 +1073,7 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 
 
 		if found_prefix {
-			slog.Info(fmt.Sprintf("found new prefix: %v\n", prefix.String()))
+			slog.Info(fmt.Sprintf("found new prefix: %v", prefix.String()))
 			if !noFile {
 				updateIPv6Prefix(prefix)
 			}
@@ -1143,7 +1143,7 @@ func get_addr_from_if(interfaceName string) (netip.Addr, error) {
 		if isValidIPprefixAddress(ip) {
 			p := netip.PrefixFrom(ip, Prefix_length)
 			ipv6Prefix = &p
-			slog.Info(fmt.Sprintf("ipnet: %v\n", ipv6Prefix.Addr().String()))
+			slog.Info(fmt.Sprintf("ipnet: %v", ipv6Prefix.Addr().String()))
 
 			// ipv6Prefix = get_prefix_padded(ipnet, vlan)
 			found_addr = true
@@ -1465,7 +1465,7 @@ func templateLoop(skipIF *bool) {
 		if !(*skipIF) {
 			err := get_interfaceName_file()
 			if err != nil {
-				slog.Error(fmt.Sprintf("get IF err: %v\n", err))
+				slog.Error(fmt.Sprintf("get IF err: %v", err))
 				if interfaceName == "" {
 					time.Sleep(2 * time.Second)
 					continue
@@ -1518,8 +1518,8 @@ func templateLoop(skipIF *bool) {
 			// slog.Info(fmt.Sprintln(strings.Repeat("=", 50)))
 			// log.Print("\n")
 
-			slog.Info(fmt.Sprintf("slept until: %v\n\n", sleep_ut))
-			slog.Info(fmt.Sprintf("prefix: %v\n", currentIPv6Prefix))
+			slog.Info(fmt.Sprintf("slept until: %v", sleep_ut))
+			slog.Info(fmt.Sprintf("prefix: %v", currentIPv6Prefix))
 
 
 			// err := loadAndSaveZoneFiles(currentIPv6Prefix, currentIPv6Prefix_str)
@@ -1560,7 +1560,7 @@ func templateLoop(skipIF *bool) {
 			// }
 
 			lastIPv6Prefix = currentIPv6Prefix
-			slog.Info("Files updated successfully.\n\n")
+			slog.Info("Files updated successfully.")
 
 
 			// log.Println(strings.Repeat("=", 50))
@@ -1652,7 +1652,7 @@ func main() {
 			checkHosts(ctx, conf)
 
 			sleepTime := time.Duration(conf.HostsCheckTime * float64(time.Second)) - time.Since(st)
-			slog.Info(fmt.Sprintf("ping sleeping for %v\n", sleepTime))
+			slog.Info(fmt.Sprintf("ping sleeping for %v", sleepTime))
 			time.Sleep(sleepTime)
 		}
 	})
