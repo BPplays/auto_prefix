@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/netip"
+
 	// "log"
 	// "net/netip"
 	"testing"
@@ -99,6 +100,92 @@ func TestLooseParseSuffix(t *testing.T) {
 			t.Error("looseParseSuffix failed to parse ip\n")
 		}
 
+
+
+	})
+
+}
+
+
+func TestParsing(t *testing.T) {
+
+
+	t.Run("test rev dns", func(t *testing.T) {
+		t.Parallel()
+
+
+		ip := netip.MustParsePrefix("cafe:babe:beef:1234::/60")
+		full := IPv6PrefixToReverseDNS(ip.Addr())
+		pref, suff, err := IPv6PrefixToReverseDnsPrefixSuffix(ip)
+		if err != nil {
+			t.Errorf(
+				"revdns parse broken pref: %v, suff: %v\nfull: %v\n",
+				pref,
+				suff,
+				full,
+			)
+		}
+
+		if full != (fmt.Sprintf("%v.%v", suff, pref)) {
+			t.Errorf(
+				"revdns parse broken pref: %v, suff: %v\nfull: %v\ntogt: %v",
+				pref,
+				suff,
+				full,
+				(fmt.Sprintf("%v.%v", suff, pref)),
+			)
+		}
+
+	})
+
+	t.Run("test rev dns", func(t *testing.T) {
+		t.Parallel()
+
+
+		ip := netip.MustParsePrefix("cafe:babe:beef:1234::/63")
+		full := IPv6PrefixToReverseDNS(ip.Addr())
+		pref, suff, err := IPv6PrefixToReverseDnsPrefixSuffix(ip)
+		if err != nil {
+			t.Errorf(
+				"revdns parse broken pref: %v, suff: %v\nfull: %v\n",
+				pref,
+				suff,
+				full,
+			)
+		}
+
+		if full != (fmt.Sprintf("%v.%v", suff, pref)) {
+			t.Errorf(
+				"revdns parse broken pref: %v, suff: %v\nfull: %v\ntogt: %v",
+				pref,
+				suff,
+				full,
+				(fmt.Sprintf("%v.%v", suff, pref)),
+			)
+		}
+
+	})
+
+
+	t.Run("test rev dns", func(t *testing.T) {
+		t.Parallel()
+
+
+		ip := netip.MustParsePrefix("cafe:babe:beef:1234::/4")
+		full := IPv6PrefixToReverseDNS(ip.Addr())
+		pref, suff, err := IPv6PrefixToReverseDnsPrefixSuffix(ip)
+		if err != nil {
+			t.Errorf(
+				"revdns parse broken pref: %v, suff: %v\nfull: %v\n",
+				pref,
+				suff,
+				full,
+			)
+		}
+
+		if pref != "c" {
+			t.Errorf("pref: %v, suf: %v\n", pref, suff)
+		}
 
 
 	})

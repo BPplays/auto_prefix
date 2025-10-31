@@ -44,7 +44,6 @@ import (
 	"github.com/BPplays/auto_prefix/source"
 	"github.com/prometheus-community/pro-bing"
 	"github.com/sevlyar/go-daemon"
-	"golang.org/x/sys/unix"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
@@ -62,6 +61,7 @@ const (
 	prefix_full_subnet_len = 64
 	restartMode       = "replace" // or "force-reload"
 	checkInterval  = 5 * time.Second
+	ipv6MaxAddr = "ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
 
 )
 var (
@@ -642,14 +642,18 @@ func replaceVars(
 	// fmt.Printf("cacheHostFound from replaceVars: %v\n", cacheHostFound)
 
 	ipstr := getIpv6Subnet(prefix, 0)
-	rev_dns := IPv6PrefixToReverseDNS(*prefix, 64, 0)
+	// rev_dns := IPv6PrefixToReverseDNSprefixOnly(*prefix, 64, 0)
+	revPrefix, _, err := IPv6PrefixToReverseDnsPrefixSuffix(*prefix)
+	if err != nil {
+		revPrefix = "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2"
+	}
 
 	getIPv6SubnetCache := make(map[string]string)
 	mixPrefixIPCache := make(map[string]string)
 	vars := map[string]any{
 		"ut_10":  ut,
 		"ipv6_prefix":   ipstr,
-		"ipv6_revdns_prefix": rev_dns,
+		"ipv6_revdns_prefix": revPrefix,
 		"pd_size": fmt.Sprint((*prefix).Bits()),
 	}
 
@@ -691,10 +695,29 @@ func replaceVars(
 
 				return mixedStr
 			},
+
+			"get_reverse_dns_ip": func(ipStr string) (string) {
+				if pref, exists := mixPrefixIPCache[ipStr]; exists {
+					return pref
+				}
+
+				ip, err := looseParseSuffix(ipStr)
+				if err != nil {
+					ip = netip.MustParseAddr(ipv6MaxAddr)
+				}
+
+				mixed := mixPrefixIP(prefix, &ip)
+				_, suffix, err := IPv6PrefixToReverseDnsPrefixSuffix(*mixed)
+				if err != nil {
+					return ""
+				}
+
+				return suffix
+			},
 		},
 	)
 
-    tpl, err := tpl.Parse(string(*content))
+    tpl, err = tpl.Parse(string(*content))
     if err != nil {
         return "", fmt.Errorf("error parsing template: %v", err)
     }
@@ -1177,33 +1200,49 @@ func updateIPv6Prefix(newPrefix netip.Prefix) error {
 
 
 
-func IPv6PrefixToReverseDNS(prefix netip.Prefix, prefLen int, vlan uint64) string {
-	prefix_vlan := get_network_from_prefix(prefix, vlan)
+func IPv6PrefixToReverseDNS(addr netip.Addr) string {
 
-	exp := ipaddr.NewIPAddressFromNetNetIPAddr(prefix_vlan.Addr())
+	exp := ipaddr.NewIPAddressFromNetNetIPAddr(addr)
 
 	revdns, err := exp.GetSection().ToReverseDNSString()
 	if err != nil {
 		revdns = "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.8.b.d.0.1.0.0.2.ip6.arpa"
 	}
-	// log.Printf("debug: full revdns is: %v\n", revdns)
 
-	// Calculate the number of nibbles to include in the prefix
+	revdns = strings.TrimSuffix(revdns, ".ip6.arpa")
+
+	return revdns
+}
+
+
+func IPv6PrefixToReverseDnsPrefixSuffix(p netip.Prefix) (
+	prefix, suffix string,
+	err error,
+) {
+	const totalNibbles = 128 / 4
+
+	prefLen := p.Bits()
+
+	revdns := IPv6PrefixToReverseDNS(p.Addr())
+
 	numNibbles := prefLen / 4
 
-	// Split the reverse DNS string by dots
 	parts := strings.Split(revdns, ".")
+    if len(parts) != totalNibbles {
+        // be tolerant: if function producing revdns gives fewer/more labels, bail with error
+        return "", "", fmt.Errorf("unexpected nibble count: got %d labels, want %d", len(parts), totalNibbles)
+    }
 
-	// Include only the necessary parts up to the prefix length
-	// Reverse DNS entries are reversed, so take from the start
-	prefixParts := parts[numNibbles:]
+	split := totalNibbles - numNibbles
+	prefixParts := parts[split:]
 
-	// Join the prefix parts back into a reverse DNS string
-	prefixPart := strings.Join(prefixParts, ".")
+	prefix = strings.Join(prefixParts, ".")
 
-	// log.Printf("debug: part revdns is: %v\n", prefixPart)
+	suffixParts := parts[:split]
 
-	return prefixPart
+	suffix = strings.Join(suffixParts, ".")
+
+	return prefix, suffix, nil
 }
 
 func addrTo_net_IP(addr net.Addr) (net.IP, error) {
@@ -1235,10 +1274,6 @@ func addrToNetIPaddr(addr net.Addr) (netip.Addr, error) {
 
 
 
-
-
-
-//! ====== ip part starts
 
 
 
@@ -1366,6 +1401,7 @@ func pingHosts(ctx context.Context, conf Config) {
 }
 
 
+
 func templateLoop(skipIF *bool) {
 	var lastIPv6Prefix netip.Prefix = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
 
@@ -1422,7 +1458,7 @@ func templateLoop(skipIF *bool) {
 			return
 		}
 
-		if currentIPv6Prefix != lastIPv6Prefix { filesInvalidAdd1() }
+		if currentIPv6Prefix != lastIPv6Prefix { filesInvalidAdd(1) }
 
 
 		startFilesInvalid := getFilesInvalid()
@@ -1462,8 +1498,8 @@ func templateLoop(skipIF *bool) {
 
 				if changed {
 					logTitleln("some files changed")
-					restartServices(service)
 				}
+				restartServices(service)
 			}
 
 			// err = restart_dns()
@@ -1534,7 +1570,7 @@ func main() {
 		})
 	}
 
-	if err := unix.Setpriority(unix.PRIO_PROCESS, 0, *niceness); err != nil {
+	if err := setNiceness(*niceness); err != nil {
 		log.Printf("warning: failed to set priority: %v", err)
 	}
 
@@ -1545,15 +1581,11 @@ func main() {
 
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		templateLoop(skipIF)
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ctx := context.Background()
 
 		for {
@@ -1565,11 +1597,9 @@ func main() {
 			log.Printf("ping sleeping for %v\n", sleepTime)
 			time.Sleep(sleepTime)
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		ctx := context.Background()
 
 		for {
@@ -1577,18 +1607,25 @@ func main() {
 			loadConfigs(ctx)
 			time.Sleep((25 * time.Second) - time.Since(st))
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
+		st := time.Now()
+		shortSleepTime := (25 * time.Second) - time.Since(st)
+		longSleepTime := (100 * time.Second) - time.Since(st)
 		for {
 			st := time.Now()
 			filesInvalidAdd(1)
-			time.Sleep((100 * time.Second) - time.Since(st))
+
+			shortSleepTime = (25 * time.Second) - time.Since(st)
+			longSleepTime = (100 * time.Second) - time.Since(st)
+			time.Sleep(min(
+				shortSleepTime,
+				longSleepTime,
+			))
 
 		}
-	}()
+	})
 
 	wg.Wait()
 
