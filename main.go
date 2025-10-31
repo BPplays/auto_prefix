@@ -1387,8 +1387,8 @@ func pingHost(
 
 		err = pinger.RunWithContext(pctx)
 		if err != nil {
-			if ctx.Err() != nil {
-				slog.Error(fmt.Sprintf("ctx err running pinger: %v", err))
+			if pctx.Err() != nil {
+				// slog.Error(fmt.Sprintf("ctx err running pinger: %v", err))
 				result = false
 			}
 
