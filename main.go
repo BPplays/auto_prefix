@@ -947,7 +947,7 @@ func repSaveFileAndFolder(
 
 		toContent, err := os.ReadFile(file.To)
 		switch {
-		case os.IsNotExist(err):
+		// case os.IsNotExist(err):
 		case err != nil:
 			log.Printf("error reading final file skipping hash compare: %v\n", err)
 			changed = true
