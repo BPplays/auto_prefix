@@ -943,13 +943,9 @@ func restartServices(service Service) {
 
 }
 
-func repSaveFileAndFolder(
-	service Service,
-	prefix netip.Prefix,
-) (changed bool, err error) {
+func getFilesFromFolders(service Service) ([]FileMapping) {
 	var allFiles []FileMapping = service.Files
 
-	logTitleln("Reading and saving files")
 
 	for _, folder := range service.Folders {
 
@@ -984,6 +980,17 @@ func repSaveFileAndFolder(
 			allFiles = append(allFiles, tFile)
 		}
 	}
+
+	return allFiles
+}
+
+func repSaveFileAndFolder(
+	service Service,
+	prefix netip.Prefix,
+) (changed bool, err error) {
+	logTitleln("Reading and saving files")
+
+	allFiles := getFilesFromFolders(service)
 
 	for _, file := range allFiles {
 		// log.Printf("reading: %v\n", file.From)
@@ -1404,6 +1411,47 @@ func loadConfigs(ctx context.Context) (error) {
 	return nil
 }
 
+func checkTemplatesChanged() {
+	prevTemplateHash := make(map[string][]byte)
+
+	services := getGlobalServices()
+	for {
+		st := time.Now()
+
+		for _, srv := range services {
+			allFiles := getFilesFromFolders(srv)
+			for _, file := range allFiles {
+				content, err := os.ReadFile(file.From)
+				if err != nil {
+					slog.Error(fmt.Sprintf(
+						"error reading from file [%v]: %v",
+						file.From,
+						err,
+					))
+					continue
+				}
+
+				val, ok := prevTemplateHash[file.From]
+				if !ok {
+					prevTemplateHash[file.From] = content
+					continue
+				}
+
+				if !bytes.Equal(content, val) {
+					filesInvalidAdd(1)
+				}
+			}
+		}
+
+		longSleepTime := (100 * time.Second) - time.Since(st)
+		time.Sleep(min(
+			// shortSleepTime,
+			longSleepTime,
+			))
+
+	}
+}
+
 func pingHost(
 	ctx context.Context,
 	host HostCheck,
@@ -1685,21 +1733,23 @@ func main() {
 	})
 
 	wg.Go(func() {
-		st := time.Now()
-		// shortSleepTime := (25 * time.Second) - time.Since(st)
-		longSleepTime := (100 * time.Second) - time.Since(st)
-		for {
-			st := time.Now()
-			filesInvalidAdd(1)
+		checkTemplatesChanged()
 
-			// shortSleepTime = (25 * time.Second) - time.Since(st)
-			longSleepTime = (100 * time.Second) - time.Since(st)
-			time.Sleep(min(
-				// shortSleepTime,
-				longSleepTime,
-			))
-
-		}
+		// st := time.Now()
+		// // shortSleepTime := (25 * time.Second) - time.Since(st)
+		// longSleepTime := (100 * time.Second) - time.Since(st)
+		// for {
+		// 	st := time.Now()
+		// 	filesInvalidAdd(1)
+		//
+		// 	// shortSleepTime = (25 * time.Second) - time.Since(st)
+		// 	longSleepTime = (100 * time.Second) - time.Since(st)
+		// 	time.Sleep(min(
+		// 		// shortSleepTime,
+		// 		longSleepTime,
+		// 	))
+		//
+		// }
 	})
 
 	wg.Wait()
