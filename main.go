@@ -1013,12 +1013,7 @@ func repSaveFileAndFolder(
 			changed = true
 
 		default:
-			equal, err := defHashCompare(&toContent, &bReplacedContent)
-			if err != nil {
-				slog.Error(fmt.Sprintf("error hashing, err: %v", err))
-			}
-
-			if !equal {
+			if !bytes.Equal(toContent, bReplacedContent) {
 				changed = true
 			}
 		}
