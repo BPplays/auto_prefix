@@ -308,15 +308,15 @@ func defHashFile(path string) (*[]byte, error) {
 }
 
 
-func defHashCompare(a, b *[]byte) (bool) {
+func defHashCompare(a, b *[]byte) (bool, error) {
 
 	aHash, err := defHash(a)
-	if err != nil { return false }
+	if err != nil { return false, err }
 
 	bHash, err := defHash(b)
-	if err != nil { return false }
+	if err != nil { return false, err }
 
-	return slices.Equal((*aHash), (*bHash))
+	return slices.Equal((*aHash), (*bHash)), nil
 }
 
 func defHash(input *[]byte) (*[]byte, error) {
@@ -332,7 +332,7 @@ func defHash(input *[]byte) (*[]byte, error) {
 	return &sum, nil
 }
 
-func sprintBytesAsBinary(data interface{}) (string) {
+func sprintBytesAsBinary(data any) (string) {
 	v := reflect.ValueOf(data)
 	kind := v.Kind()
 	if kind != reflect.Slice && kind != reflect.Array {
@@ -354,7 +354,7 @@ func sprintBytesAsBinary(data interface{}) (string) {
 }
 
 
-func get_interfaceName_file() error {
+func getInterfaceNameFile() error {
 	content, err := os.ReadFile(IfFile)
 	if err != nil {
 		return err
@@ -365,7 +365,7 @@ func get_interfaceName_file() error {
 	return nil
 }
 
-func get_pd_size_file(pd_file string) (error, int) {
+func getPdSizeFile(pd_file string) (error, int) {
 	content, err := os.ReadFile(pd_file)
 	if err != nil {
 		return err, -1
@@ -437,16 +437,18 @@ func mixPrefixIP(prefix *netip.Prefix, suffix *netip.Addr) *netip.Prefix {
     return &outPrefix
 }
 
-func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end int) netip.Prefix {
+func setIpaddrBits(
+	prefix netip.Prefix,
+	subnet_uint64 uint64,
+	start int,
+	end int,
+) netip.Prefix {
 	var addr_output netip.Addr
 	var addr_sl [16]byte
-
-
 	var addr_bytes [16]byte
-	addr_bytes = prefix.Addr().As16()
-	// log.Printf("addr: %v,\naddr subnet uint64: %v,\naddr_bytes: %v\n\n\n\n", prefix.Addr().String(), subnet_uint64, sprintBytesAsBinary(addr_bytes))
 
-	// log.Printf("set bits: start: %v, end: %v\n", start, end)
+	addr_bytes = prefix.Addr().As16()
+
 	for i := end; i >= start; i-- {
 		if i == start {
 			break
@@ -455,16 +457,10 @@ func set_ipaddr_bits(prefix netip.Prefix, subnet_uint64 uint64, start int, end i
 		subnet_bit_pos := (-i) + end
 		bit := (int(subnet_uint64) >> subnet_bit_pos) & 1
 		addr_sl = SetBit(addr_bytes, i, bit == 1)
-		// log.Printf("output nonfin: %v\n\n output_nonfin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_sl))
-		// log.Printf("Bit %d: %d\n", i, bit)
 	}
 
 	addr_output = netip.AddrFrom16(addr_sl)
 
-	// log.Printf("output fin: %v\n\n output_fin bits: %v\n", addr_output.String(),sprintBytesAsBinary(addr_output.As16()))
-	// log.Println("")
-	// log.Println("")
-	// log.Println("")
 	return netip.PrefixFrom(addr_output, prefix.Bits())
 }
 
@@ -475,38 +471,6 @@ func getIpv6Subnet(prefix *netip.Prefix, vlan uint64) string {
 	ipstr = strings.TrimSuffix(ipstr, ":")
 	return ipstr
 }
-
-// func replaceIPv6Prefix(content string, prefix netip.Prefix) string {
-// 	// Define the regular expression pattern
-// 	pattern := `#@ipv6_prefix_([0-9a-fA-F]+)@#`
-// 	re := regexp.MustCompile(pattern)
-// 	// log.Println("starting regex conv")
-//
-// 	// Find all matches in the content
-// 	matches := re.FindAllStringSubmatch(content, -1)
-// 	var repped string = content
-// 	var vlan uint64
-// 	var err error
-// 	// Replace each match
-// 	for _, match := range matches {
-// 		fullMatch := match[0]
-// 		vlanStr := match[1] // Extract the VLAN number
-// 		vlan, err = strconv.ParseUint(vlanStr, 16, 64)
-// 		if err != nil {
-// 			// Handle conversion error
-// 			log.Println("Error converting VLAN number:", err)
-// 			continue
-// 		}
-//
-// 		ipstr := getIpv6Subnet(&prefix, vlan)
-//
-// 		replacement_ip := ipstr
-// 		repped = strings.ReplaceAll(repped, fullMatch, replacement_ip)
-// 		// log.Printf("full match: %v, vlan %v, repped: %v\n", fullMatch, vlan, replacement_ip.Addr().String())
-// 	}
-//
-// 	return repped
-// }
 
 func parseConfigFile(filePath string) (Config, error) {
 	file, err := os.Open(filePath)
@@ -524,22 +488,19 @@ func parseConfigFile(filePath string) (Config, error) {
 	return config, nil
 }
 
-// loadServices loads and parses all YAML files from a directory
 func loadServices(dir string) ([]Service, error) {
 	var configs []Service
 
-	// Walk through the directory
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("error walking directory: %w", err)
 		}
 
-		// Only process regular files with .yaml or .yml extensions
 		if !d.IsDir() && (filepath.Ext(path) == ".yaml" || filepath.Ext(path) == ".yml") {
 			fileConfigs, err := parseServiceFile(path)
 			if err != nil {
 				slog.Error(fmt.Sprintf("Error parsing file %s: %v", path, err))
-				return nil // Skip invalid files but continue processing others
+				return nil
 			}
 			configs = append(configs, fileConfigs...)
 		}
@@ -1052,7 +1013,12 @@ func repSaveFileAndFolder(
 			changed = true
 
 		default:
-			if !defHashCompare(&toContent, &bReplacedContent) {
+			equal, err := defHashCompare(&toContent, &bReplacedContent)
+			if err != nil {
+				slog.Error(fmt.Sprintf("error hashing, err: %v", err))
+			}
+
+			if !equal {
 				changed = true
 			}
 		}
@@ -1125,7 +1091,7 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 				found_prefix = true
 			}
 
-			err, prefix_len = get_pd_size_file(PdFile)
+			err, prefix_len = getPdSizeFile(PdFile)
 			if err != nil {
 				prefix_len = Prefix_length_default
 			}
@@ -1192,7 +1158,7 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 }
 
 func get_network_from_prefix(prefix netip.Prefix, vlan uint64) (netip.Prefix) {
-	outputPrefix := set_ipaddr_bits(prefix, vlan, Prefix_length, prefix_full_subnet_len)
+	outputPrefix := setIpaddrBits(prefix, vlan, Prefix_length, prefix_full_subnet_len)
 	return outputPrefix
 }
 
@@ -1558,7 +1524,7 @@ func templateLoop(skipIF *bool) {
 	for {
 		logTitleln("starting loop")
 		if !(*skipIF) {
-			err := get_interfaceName_file()
+			err := getInterfaceNameFile()
 			if err != nil {
 				slog.Error(fmt.Sprintf("get IF err: %v", err))
 				if interfaceName == "" {
