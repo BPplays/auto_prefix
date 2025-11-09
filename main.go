@@ -1085,7 +1085,7 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 		if tsource == source.File {
 			var prefix_len int
 
-			addr, err := get_addr_from_if(interfaceName)
+			addr, err := get_addr_from_if(interfaceName, config)
 			if err == nil {
 				found_prefix = true
 			}
@@ -1162,7 +1162,7 @@ func get_network_from_prefix(prefix netip.Prefix, vlan uint64) (netip.Prefix) {
 }
 
 
-func get_addr_from_if(interfaceName string) (netip.Addr, error) {
+func get_addr_from_if(interfaceName string, cfg Config) (netip.Addr, error) {
 	// Specify the network interface name
 	// interfaceName := "eth0" // Change this to your desired interface name
 
@@ -1205,7 +1205,7 @@ func get_addr_from_if(interfaceName string) (netip.Addr, error) {
 	}
 
 	if found_addr {
-		updateStoredIPv6Prefix(*ipv6Prefix)
+		updateStoredIPv6Prefix(*ipv6Prefix, cfg)
 	} else {
 		ipv6Prefix, err = readIPv6PrefixFromFile()
 		if err != nil {
