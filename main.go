@@ -120,6 +120,7 @@ type Config struct {
 	Url                 string        `yaml:"url"`
 	Hosts                 []HostCheck        `yaml:"hosts"`
 	HostsCheckTime                 float64        `yaml:"hosts_check_time"`
+	dryRun                 bool
 }
 
 type Service struct {
@@ -987,6 +988,7 @@ func getFilesFromFolders(service Service) ([]FileMapping) {
 func repSaveFileAndFolder(
 	service Service,
 	prefix netip.Prefix,
+	cfg Config,
 ) (changed bool, err error) {
 	logTitleln("Reading and saving files")
 
@@ -1026,9 +1028,11 @@ func repSaveFileAndFolder(
 		}
 
 
-		err = os.WriteFile(file.To, bReplacedContent, file.Perms.FileMode())
-		if err != nil {
-			slog.Error(fmt.Sprintf("error replacing vars: %v", err))
+		if !cfg.dryRun {
+			err = os.WriteFile(file.To, bReplacedContent, file.Perms.FileMode())
+			if err != nil {
+				slog.Error(fmt.Sprintf("error replacing vars: %v", err))
+			}
 		}
 
 		usr, err := user.Lookup(file.Owner)
@@ -1240,20 +1244,21 @@ func readIPv6PrefixFromFile() (*netip.Prefix, error) {
 	return &prefix.Prefix, nil
 }
 
-func writeIPv6PrefixToFile(prefix jsonIPv6Prefix) error {
+func writeIPv6PrefixToFile(prefix jsonIPv6Prefix, cfg Config) error {
 	data, err := json.MarshalIndent(prefix, "", "  ")
 	if err != nil {
 		return err
 	}
+	if cfg.dryRun { slog.Info("would save prefix to file"); return nil }
 	return os.WriteFile(PrefixStore, data, 0644)
 }
 
-func updateIPv6Prefix(newPrefix netip.Prefix) error {
+func updateIPv6Prefix(newPrefix netip.Prefix, cfg Config) error {
 	var no_stored bool
 	storedPrefix, err := readIPv6PrefixFromFile()
 	if err != nil {
 		slog.Error(fmt.Sprint("can't read prefix", err))
-		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix})
+		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix}, cfg)
 	}
 
 	if storedPrefix == nil {
@@ -1267,7 +1272,7 @@ func updateIPv6Prefix(newPrefix netip.Prefix) error {
 	if (no_stored) || ((*storedPrefix) != newPrefix) {
 		slog.Error(fmt.Sprint("Updating IPv6 prefix to:", newPrefix.String()))
 
-		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix})
+		return writeIPv6PrefixToFile(jsonIPv6Prefix{Prefix: newPrefix}, cfg)
 	}
 
 	slog.Info("IPv6 prefix is unchanged.")
@@ -1556,7 +1561,7 @@ func checkHosts(ctx context.Context, conf Config) {
 
 
 
-func templateLoop(skipIF *bool) {
+func templateLoop(dryRun bool, skipIF *bool) {
 	var lastIPv6Prefix netip.Prefix = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
 
 	var sleep_sec float64
@@ -1586,6 +1591,7 @@ func templateLoop(skipIF *bool) {
 		time.Sleep(sleep_dur)
 
 		config := getGlobalConfig()
+		config.dryRun = dryRun
 		services := getGlobalServices()
 
 		ut = get_dns_ut()
@@ -1608,7 +1614,7 @@ func templateLoop(skipIF *bool) {
 
 
 			for _, service := range services {
-				changed, err := repSaveFileAndFolder(service, currentIPv6Prefix)
+				changed, err := repSaveFileAndFolder(service, currentIPv6Prefix, config)
 				if err != nil {
 					slog.Error(fmt.Sprintln("Error:", err))
 
@@ -1641,7 +1647,7 @@ func init() {
 }
 
 
-func main() {
+func run(dryRun bool) {
 
 	daemonFlag := flag.Bool("d", false, "run as daemon")
 	pidFile := flag.String("pid", fmt.Sprintf("/var/run/%v.pid", progName), "PID file path")
@@ -1705,7 +1711,7 @@ func main() {
 	var wg sync.WaitGroup
 
 	wg.Go(func() {
-		templateLoop(skipIF)
+		templateLoop(dryRun, skipIF)
 	})
 
 	wg.Go(func() {
@@ -1754,4 +1760,9 @@ func main() {
 
 	wg.Wait()
 
+}
+
+
+func main() {
+	run(false)
 }

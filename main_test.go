@@ -198,11 +198,13 @@ func TestParsing(t *testing.T) {
 		a := []byte("testjdfkslf")
 		b := []byte("testjdfkslf")
 		c := []byte("1784923584")
-		if !defHashCompare(&a, &b) {
+		eq, err := defHashCompare(&a, &b)
+		if (!eq) || (err != nil) {
 			t.Error("hash compare fail to get 2 things that are the same")
 		}
 
-		if defHashCompare(&a, &c) {
+		eq, err = defHashCompare(&a, &c)
+		if (eq) || (err != nil) {
 			t.Error("hash compare fail to get 2 things that are the different")
 		}
 
