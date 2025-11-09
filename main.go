@@ -1128,7 +1128,7 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 		if found_prefix {
 			slog.Info(fmt.Sprintf("found new prefix: %v", prefix.String()))
 			if !noFile {
-				updateIPv6Prefix(prefix)
+				updateStoredIPv6Prefix(prefix, config)
 			}
 			break
 		} else if !noFile {
@@ -1205,7 +1205,7 @@ func get_addr_from_if(interfaceName string) (netip.Addr, error) {
 	}
 
 	if found_addr {
-		updateIPv6Prefix(*ipv6Prefix)
+		updateStoredIPv6Prefix(*ipv6Prefix)
 	} else {
 		ipv6Prefix, err = readIPv6PrefixFromFile()
 		if err != nil {
@@ -1246,7 +1246,7 @@ func writeIPv6PrefixToFile(prefix jsonIPv6Prefix, cfg Config) error {
 	return os.WriteFile(PrefixStore, data, 0644)
 }
 
-func updateIPv6Prefix(newPrefix netip.Prefix, cfg Config) error {
+func updateStoredIPv6Prefix(newPrefix netip.Prefix, cfg Config) error {
 	var no_stored bool
 	storedPrefix, err := readIPv6PrefixFromFile()
 	if err != nil {
