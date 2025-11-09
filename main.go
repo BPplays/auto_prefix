@@ -183,17 +183,10 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 // Convenience to get the real os.FileMode
 func (m FileMode) FileMode() os.FileMode { return os.FileMode(m) }
 
-func filesInvalidAdd1() () {
-	filesInvalidMu.Lock()
-	defer filesInvalidMu.Unlock()
-	if filesInvalid < 0 { filesInvalid = 0 }
-	filesInvalid += 1
-}
-
 func filesInvalidAdd(i int) () {
 	filesInvalidMu.Lock()
 	defer filesInvalidMu.Unlock()
-	if filesInvalid < 0 { filesInvalid = 0 }
+	if filesInvalid < 0 { filesInvalid = 1 }
 	filesInvalid += i
 }
 
@@ -201,7 +194,7 @@ func filesInvalidDone(i int) () {
 	filesInvalidMu.Lock()
 	defer filesInvalidMu.Unlock()
 	filesInvalid -= i
-	if filesInvalid < 0 { filesInvalid = 0 }
+	if filesInvalid < 0 { filesInvalid = 1 }
 }
 
 func getIsFilesInvalid() (bool) {
@@ -1407,7 +1400,7 @@ func loadConfigs(ctx context.Context) (error) {
 
 	if !reflect.DeepEqual(getGlobalConfig(), config) ||
 	!reflect.DeepEqual(getGlobalServices(), services) {
-		filesInvalidAdd1()
+		filesInvalidAdd(1)
 	}
 
 	setGlobalConfig(config)
@@ -1617,8 +1610,7 @@ func templateLoop(dryRun bool, skipIF *bool) {
 				changed, err := repSaveFileAndFolder(service, currentIPv6Prefix, config)
 				if err != nil {
 					slog.Error(fmt.Sprintln("Error:", err))
-
-					// return
+					changed = true
 				}
 
 				if changed {
@@ -1632,9 +1624,9 @@ func templateLoop(dryRun bool, skipIF *bool) {
 			slog.Info("Files updated successfully.")
 
 
+			filesInvalidDone(startFilesInvalid)
 		}
 
-		filesInvalidDone(startFilesInvalid)
 	}
 
 }
