@@ -460,7 +460,7 @@ func setIpaddrBits(
 
 func getIpv6Subnet(prefix *netip.Prefix, vlan uint64) string {
 	// Call get_prefix function with interfaceName and vlan
-	ip := get_network_from_prefix(*prefix, vlan)
+	ip := getNetworkFromPrefix(*prefix, vlan)
 	ipstr := strings.TrimSuffix(ip.Addr().String(), "::")
 	ipstr = strings.TrimSuffix(ipstr, ":")
 	return ipstr
@@ -1068,7 +1068,7 @@ func repSaveFileAndFolder(
 	return changed, nil
 }
 
-func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
+func getPrefix(config Config, noFile bool) (netip.Prefix, error)  {
 	var prefix netip.Prefix
 	var found_prefix bool = false
 
@@ -1156,7 +1156,7 @@ func get_prefix(config Config, noFile bool) (netip.Prefix, error)  {
 
 }
 
-func get_network_from_prefix(prefix netip.Prefix, vlan uint64) (netip.Prefix) {
+func getNetworkFromPrefix(prefix netip.Prefix, vlan uint64) (netip.Prefix) {
 	outputPrefix := setIpaddrBits(prefix, vlan, Prefix_length, prefix_full_subnet_len)
 	return outputPrefix
 }
@@ -1590,7 +1590,7 @@ func templateLoop(dryRun bool, skipIF *bool) {
 		ut = get_dns_ut()
 
 		// Get the current IPv6 prefix
-		currentIPv6Prefix, err := get_prefix(config, false)
+		currentIPv6Prefix, err := getPrefix(config, false)
 		if err != nil {
 			slog.Error(fmt.Sprintln("Error:", err))
 			return
