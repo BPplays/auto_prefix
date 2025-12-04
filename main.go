@@ -719,6 +719,31 @@ func replaceVars(
 
 				return suffix
 			},
+
+			"get_reverse_dns_prefix_size_ula": func(ipStr string) (string) {
+
+				ip, err := looseParseSuffix(ipStr)
+				if err != nil {
+					ip = netip.MustParseAddr(ipv6MaxAddr)
+				}
+
+				prefULA, _, err := IPv6PrefixToReverseDnsPrefixSuffix(
+					netip.PrefixFrom(
+						ip,
+						prefix.Bits(),
+					),
+				)
+				if err != nil {
+					prefULA, _, _ = IPv6PrefixToReverseDnsPrefixSuffix(
+						netip.PrefixFrom(
+							netip.MustParseAddr("2001:db8::"),
+							prefix.Bits(),
+						),
+					)
+				}
+
+				return prefULA
+			},
 		},
 	)
 
