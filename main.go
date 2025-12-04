@@ -1130,6 +1130,7 @@ func getPrefix(config Config, noFile bool) (netip.Prefix, error)  {
 			defer tr.Close()
 			client := &http.Client{
 				Transport: tr,
+				Timeout: 1 * time.Second,
 			}
 
 			resp, err := client.Get(config.Url)
@@ -1157,9 +1158,10 @@ func getPrefix(config Config, noFile bool) (netip.Prefix, error)  {
 			}
 			break
 		} else if !noFile {
-			slog.Info("did not find new prefix")
+			slog.Error("did not find new prefix")
 			prefix, err := readIPv6PrefixFromFile()
 			if err != nil {
+				slog.Error("couldn't read cached prefix from file")
 				continue
 				// if os.IsNotExist(err) {
 				// 	continue
