@@ -112,7 +112,7 @@ type HostCheck struct {
 	Host                 string        `yaml:"host"`
 	Type                 string        `yaml:"type"`
 	Port                 int        `yaml:"port"`
-
+	Found                bool
 }
 
 type Config struct {
@@ -568,11 +568,12 @@ func appendVarMap(a *map[string]any, b *map[string]any) *map[string]any {
 
 func varHostFoundAdd(
 	hostFound *map[HostCheck]bool,
-) *map[string]any {
-	out := make(map[string]any)
+) *map[string]HostCheck {
+	out := make(map[string]HostCheck)
 
-	for k, v := range *hostFound {
-		out[k.VarName] = v
+	for hc, found := range *hostFound {
+		hc.Found = found
+		out[hc.VarName] = hc
 	}
 
 	return &out
@@ -633,7 +634,7 @@ func replaceVars(
 		"ipv6_revdns_prefix": revPrefix,
 		"ipv6_revdns_prefix_48": revPrefix48,
 		"pd_size": fmt.Sprint((*prefix).Bits()),
-		"hosts": map[string]any{},
+		"hosts": map[string]HostCheck{},
 	}
 
 	vars = *appendVarMap(&vars, &service.Vars)
