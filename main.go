@@ -1048,7 +1048,7 @@ func repSaveFileAndFolder(
 
 
 		if !cfg.dryRun {
-			err = os.WriteFile(file.To, bReplacedContent, file.Perms.FileMode())
+			err = atomicWrite(file.To, bReplacedContent, file.Perms.FileMode())
 			if err != nil {
 				slog.Error(fmt.Sprintf("error replacing vars: %v", err))
 			}
@@ -1271,7 +1271,7 @@ func writeIPv6PrefixToFile(prefix jsonIPv6Prefix, cfg Config) error {
 		return err
 	}
 	if cfg.dryRun { slog.Info("would save prefix to file"); return nil }
-	return os.WriteFile(PrefixStore, data, 0644)
+	return atomicWrite(PrefixStore, data, 0644)
 }
 
 func updateStoredIPv6Prefix(newPrefix netip.Prefix, cfg Config) error {
