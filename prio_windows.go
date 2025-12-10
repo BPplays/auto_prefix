@@ -11,7 +11,5 @@ func setNiceness(n int) error {
 
 
 func atomicWrite(filename string, data []byte, perm os.FileMode) (error) {
-	var err error = nil
-	atomicfile.WriteFile(filename, data, perm)
-	return err
+	return atomicfile.WriteFile(filename, data, perm)
 }

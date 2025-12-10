@@ -14,8 +14,6 @@ func setNiceness(n int) error {
 }
 
 func atomicWrite(filename string, data []byte, perm os.FileMode) (error) {
-	var err error = nil
-	err = renameio.WriteFile(filename, data, perm)
-	return err
+	return renameio.WriteFile(filename, data, perm)
 }
 
