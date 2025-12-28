@@ -101,7 +101,8 @@ type FileMapping struct {
 	Perms   FileMode `yaml:"perms"`
 	Owner   string `yaml:"owner"`
 	Group   string `yaml:"group"`
-	Type    string
+	content string
+	typef    string
 }
 
 type jsonIPv6Prefix struct {
@@ -1078,8 +1079,8 @@ func repSaveFileAndFolder(
 		if err != nil {
 			continue
 		}
-		url.From = cont
-		url.Type = "url"
+		url.content = cont
+		url.typef = "url"
 		allFiles = append(allFiles, url)
 
 
@@ -1090,8 +1091,8 @@ func repSaveFileAndFolder(
 	for _, file := range allFiles {
 		var content []byte
 
-		if file.Type == "url" {
-			content = []byte(file.From)
+		if file.typef == "url" {
+			content = []byte(file.content)
 		} else {
 			// log.Printf("reading: %v\n", file.From)
 			content, err = os.ReadFile(file.From)
