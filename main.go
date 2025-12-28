@@ -69,6 +69,7 @@ const (
 )
 var (
 	Prefix_length = Prefix_length_default
+	ttlMap = make(map[string]time.Time)
 
 	ErrNilPrefix = errors.New("prefix is nil")
 	ErrStdErrNotEmpty = errors.New("stderr is not empty")
@@ -103,6 +104,7 @@ type FileMapping struct {
 	Owner   string `yaml:"owner"`
 	Group   string `yaml:"group"`
 	Fallbacks []string `yaml:"fallbacks"`
+	UrlTTL   int64 `yaml:"url_ttl"`
 	content string
 	typef    string
 }
@@ -158,6 +160,16 @@ type Service struct {
 	RestartTimeout      int           `yaml:"restart_timeout"`
 	HostIndex      int           `yaml:"host_index"`
 	Vars      map[string]any           `yaml:"vars"`
+}
+
+func (m *FileMapping) StringForMap() string {
+	var out strings.Builder
+	out.WriteString(m.To)
+	out.WriteString(m.From)
+	out.WriteString(strings.Join(m.Fallbacks, ""))
+
+	return out.String()
+
 }
 
 // FileMode is a thin wrapper so we can implement custom unmarshalling.
@@ -1136,10 +1148,16 @@ func repSaveFileAndFolder(
 	var allFiles []FileMapping
 
 	for _, url := range service.Urls {
+		renewDeadline, exists := ttlMap[url.StringForMap()]
+		if !(exists && time.Now().After(renewDeadline)) {
+			continue
+		}
+
 		cont, err := downloadFileFallback(url)
 		if err != nil {
 			continue
 		}
+
 		url.content = cont
 		url.typef = "url"
 		allFiles = append(allFiles, url)
@@ -1189,7 +1207,7 @@ func repSaveFileAndFolder(
 		}
 
 
-		if !cfg.dryRun {
+		if (!cfg.dryRun) {
 			err = os.MkdirAll(
 				filepath.Dir(file.To),
 				file.Perms.FileMode(),
@@ -1201,6 +1219,9 @@ func repSaveFileAndFolder(
 			err = atomicWrite(file.To, bReplacedContent, file.Perms.FileMode())
 			if err != nil {
 				slog.Error(fmt.Sprintf("error replacing vars: %v", err))
+			} else if file.typef == "url" {
+				ttlTime := time.Duration(file.UrlTTL) * time.Second
+				ttlMap[file.StringForMap()] = time.Now().Add(ttlTime)
 			}
 		}
 
