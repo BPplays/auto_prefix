@@ -1081,7 +1081,7 @@ func downloadFileHttp3(url string, maxInMemory int64) (content string, err error
 	}
 
 	slog.Info(fmt.Sprintf(
-		"http3 downloaded %d bytes, status %s\n",
+		"http3 downloaded %d bytes, status %s",
 		len(body),
 		resp.Status,
 	))
@@ -1106,7 +1106,7 @@ func downloadFileHttp2(url string, maxInMemory int64) (content string, err error
 	}
 
 	slog.Info(fmt.Sprintf(
-		"http2 downloaded %d bytes, status %s\n",
+		"http2 downloaded %d bytes, status %s",
 		len(body),
 		resp.Status,
 	))
