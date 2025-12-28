@@ -89,7 +89,8 @@ var globalServicesMu sync.RWMutex
 var HostFound map[HostCheck]bool = make(map[HostCheck]bool)
 var hostFoundMu sync.RWMutex
 
-var prefixNotFound error = errors.New("no prefix found")
+var ErrPrefixNotFound error = errors.New("no prefix found")
+var ErrStatusCode error = errors.New("http status code indicates an error")
 
 var interfaceName = ""
 var ut string = ""
@@ -101,6 +102,7 @@ type FileMapping struct {
 	Perms   FileMode `yaml:"perms"`
 	Owner   string `yaml:"owner"`
 	Group   string `yaml:"group"`
+	Fallbacks []string `yaml:"fallbacks"`
 	content string
 	typef    string
 }
@@ -420,30 +422,30 @@ func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
 
 
 func mixPrefixIP(prefix *netip.Prefix, suffix *netip.Addr) *netip.Prefix {
-    prefixBits := prefix.Bits()
-    if prefixBits >= 128 {
-        return prefix
-    }
+	prefixBits := prefix.Bits()
+	if prefixBits >= 128 {
+		return prefix
+	}
 
-    prefixBytes := (*prefix).Addr().As16()
-    suffixBytes := (*suffix).As16()
+	prefixBytes := (*prefix).Addr().As16()
+	suffixBytes := (*suffix).As16()
 
-    fullBytes := prefixBits / 8     // how many full bytes the prefix occupies
-    rem := prefixBits % 8           // leftover bits in the partial byte (0..7)
+	fullBytes := prefixBits / 8     // how many full bytes the prefix occupies
+	rem := prefixBits % 8           // leftover bits in the partial byte (0..7)
 
-    if rem == 0 {
-        copy(prefixBytes[fullBytes:], suffixBytes[fullBytes:])
-    } else {
-        mask := byte(0xFF) << uint(8-rem) // mask has top `rem` bits set
-        prefixBytes[fullBytes] = (prefixBytes[fullBytes] & mask) | (suffixBytes[fullBytes] & ^mask)
-        if fullBytes+1 <= 15 {
-            copy(prefixBytes[fullBytes+1:], suffixBytes[fullBytes+1:])
-        }
-    }
+	if rem == 0 {
+		copy(prefixBytes[fullBytes:], suffixBytes[fullBytes:])
+	} else {
+		mask := byte(0xFF) << uint(8-rem) // mask has top `rem` bits set
+		prefixBytes[fullBytes] = (prefixBytes[fullBytes] & mask) | (suffixBytes[fullBytes] & ^mask)
+		if fullBytes+1 <= 15 {
+			copy(prefixBytes[fullBytes+1:], suffixBytes[fullBytes+1:])
+		}
+	}
 
-    out := netip.AddrFrom16(prefixBytes)
+	out := netip.AddrFrom16(prefixBytes)
 	outPrefix := netip.PrefixFrom(out, prefixBits)
-    return &outPrefix
+	return &outPrefix
 }
 
 func setIpaddrBits(
@@ -657,8 +659,8 @@ func replaceVars(
 	hostsMap := *varHostFoundAdd(&cacheHostFound)
 	vars["hosts"] = hostsMap
 
-    tpl := template.New("zonefile.tmpl").
-        Funcs(template.FuncMap{
+	tpl := template.New("zonefile.tmpl").
+		Funcs(template.FuncMap{
 			"get_ipv6_subnet": func(vlanStr string) (string) {
 				if pref, exists := getIPv6SubnetCache[vlanStr]; exists {
 					return pref
@@ -763,15 +765,15 @@ func replaceVars(
 		},
 	)
 
-    tpl, err = tpl.Parse(string(*content))
-    if err != nil {
-        return "", fmt.Errorf("error parsing template: %v", err)
-    }
+	tpl, err = tpl.Parse(string(*content))
+	if err != nil {
+		return "", fmt.Errorf("error parsing template: %v", err)
+	}
 
-    var out bytes.Buffer
-    if err := tpl.Execute(&out, vars); err != nil {
-        return "", fmt.Errorf("template execution failed: %w", err)
-    }
+	var out bytes.Buffer
+	if err := tpl.Execute(&out, vars); err != nil {
+		return "", fmt.Errorf("template execution failed: %w", err)
+	}
 
 
 
@@ -1020,22 +1022,22 @@ func getFilesFromFolders(service Service) ([]FileMapping) {
 }
 
 func fastIntPow(base, exp int64) int64 {
-    if exp == 0 {
-        return 1
-    }
+	if exp == 0 {
+		return 1
+	}
 	var result int64
-    result = 1
-    for exp > 0 {
-        if exp%2 == 1 {
-            result *= base
-        }
-        base *= base
-        exp /= 2
-    }
-    return result
+	result = 1
+	for exp > 0 {
+		if exp%2 == 1 {
+			result *= base
+		}
+		base *= base
+		exp /= 2
+	}
+	return result
 }
 
-func downloadFile(url string) (content string, err error) {
+func downloadFileHttp3(url string, maxInMemory int64) (content string, err error) {
 	tr := &http3.Transport{
 		TLSClientConfig: &tls.Config{
 			NextProtos: []string{http3.NextProtoH3}, // ALPN for HTTP/3
@@ -1055,7 +1057,12 @@ func downloadFile(url string) (content string, err error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	lr := &io.LimitedReader{R: resp.Body, N: 100 * fastIntPow(10, 6)} // limit to 100 MB
+
+	if resp.StatusCode >= 400 || resp.StatusCode < 200 { return "", ErrStatusCode }
+
+	lr := &io.LimitedReader{R: resp.Body, N: maxInMemory} // limit to 100 MB
+	if lr.N == 0 { return "", bytes.ErrTooLarge }
+
 	body, err := io.ReadAll(lr)
 	if err != nil {
 		return "", err
@@ -1063,6 +1070,60 @@ func downloadFile(url string) (content string, err error) {
 
 	fmt.Printf("http3 downloaded %d bytes, status %s\n", len(body), resp.Status)
 	return string(body), nil
+}
+
+func downloadFileHttp2(url string, maxInMemory int64) (content string, err error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 || resp.StatusCode < 200 { return "", ErrStatusCode }
+
+	lr := &io.LimitedReader{R: resp.Body, N: maxInMemory} // limit to 100 MB
+	if lr.N == 0 { return "", bytes.ErrTooLarge }
+
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func downloadFile(url string) (string, error) {
+	maxInMemory := 100 * fastIntPow(10, 6)
+
+	cont, err := downloadFileHttp3(url, maxInMemory)
+	if err == nil {
+		return cont, nil
+	}
+
+	cont, err = downloadFileHttp2(url, maxInMemory)
+	if err == nil {
+		return cont, nil
+	}
+
+	return "", err
+
+}
+
+func downloadFileFallback(url FileMapping) (string, error) {
+	cont, err := downloadFile(url.From)
+	if err != nil {
+		for _, fb := range url.Fallbacks {
+			var err2 error
+			cont, err2 = downloadFile(fb)
+			if err2 == nil {
+				return cont, nil
+			}
+
+		}
+	}
+
+	return cont, nil
+
 }
 
 func repSaveFileAndFolder(
@@ -1075,7 +1136,7 @@ func repSaveFileAndFolder(
 	var allFiles []FileMapping
 
 	for _, url := range service.Urls {
-		cont, err := downloadFile(url.From)
+		cont, err := downloadFileFallback(url)
 		if err != nil {
 			continue
 		}
@@ -1129,6 +1190,14 @@ func repSaveFileAndFolder(
 
 
 		if !cfg.dryRun {
+			err = os.MkdirAll(
+				filepath.Dir(file.To),
+				file.Perms.FileMode(),
+			)
+			if err != nil {
+				slog.Warn(fmt.Sprintf("error making dirs to file: %v", err))
+			}
+
 			err = atomicWrite(file.To, bReplacedContent, file.Perms.FileMode())
 			if err != nil {
 				slog.Error(fmt.Sprintf("error replacing vars: %v", err))
@@ -1260,7 +1329,7 @@ func getPrefix(config Config, noFile bool) (netip.Prefix, error)  {
 		return prefix, nil
 
 	} else {
-		return netip.Prefix{}, prefixNotFound
+		return netip.Prefix{}, ErrPrefixNotFound
 	}
 
 }
@@ -1411,10 +1480,10 @@ func IPv6PrefixToReverseDnsPrefixSuffix(p netip.Prefix) (
 	numNibbles := prefLen / 4
 
 	parts := strings.Split(revdns, ".")
-    if len(parts) != totalNibbles {
-        // be tolerant: if function producing revdns gives fewer/more labels, bail with error
-        return "", "", fmt.Errorf("unexpected nibble count: got %d labels, want %d", len(parts), totalNibbles)
-    }
+	if len(parts) != totalNibbles {
+		// be tolerant: if function producing revdns gives fewer/more labels, bail with error
+		return "", "", fmt.Errorf("unexpected nibble count: got %d labels, want %d", len(parts), totalNibbles)
+	}
 
 	split := totalNibbles - numNibbles
 	prefixParts := parts[split:]
