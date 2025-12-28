@@ -1142,6 +1142,7 @@ func downloadFileFallback(url FileMapping) (string, error) {
 			}
 
 		}
+		return "", err
 	}
 
 	return cont, nil
@@ -1178,11 +1179,9 @@ func repSaveFileAndFolder(
 		url.content = cont
 		url.typef = "url"
 		allFiles = append(allFiles, url)
-
-
 	}
 
-	allFiles = getFilesFromFolders(service)
+	allFiles = append(allFiles, getFilesFromFolders(service)...)
 
 	for _, file := range allFiles {
 		var content []byte
