@@ -69,7 +69,8 @@ const (
 )
 var (
 	Prefix_length = Prefix_length_default
-	ttlMap = make(map[string]time.Time)
+	globalTtlMap = make(map[string]time.Time)
+	ttlMapMu sync.RWMutex
 
 	ErrNilPrefix = errors.New("prefix is nil")
 	ErrStdErrNotEmpty = errors.New("stderr is not empty")
@@ -255,6 +256,26 @@ func getHostFound() (map[HostCheck]bool) {
 	hostFoundMu.RLock()
 	defer hostFoundMu.RUnlock()
 	return maps.Clone(HostFound)
+}
+
+// func setTtlMap(newMap map[string]time.Time) () {
+// 	ttlMapMu.Lock()
+// 	defer ttlMapMu.Unlock()
+// 	globalTtlMap = maps.Clone(newMap)
+// }
+
+
+func setTtlMapVal(s string, tt time.Time) () {
+	ttlMapMu.Lock()
+	defer ttlMapMu.Unlock()
+	globalTtlMap[s] = tt
+}
+
+
+func getTtlMap() (map[string]time.Time) {
+	ttlMapMu.RLock()
+	defer ttlMapMu.RUnlock()
+	return maps.Clone(globalTtlMap)
 }
 
 
@@ -1159,6 +1180,7 @@ func repSaveFileAndFolder(
 	var allFiles []FileMapping
 
 	for _, url := range service.Urls {
+		ttlMap := getTtlMap()
 		renewDeadline, exists := ttlMap[url.StringForMap()]
 		if exists {
 			if time.Now().Before(renewDeadline) {
@@ -1239,8 +1261,10 @@ func repSaveFileAndFolder(
 			if err != nil {
 				slog.Error(fmt.Sprintf("error replacing vars: %v", err))
 			} else if file.typef == "url" {
+
 				ttlTime := time.Duration(file.UrlTTL) * time.Second
-				ttlMap[file.StringForMap()] = time.Now().Add(ttlTime)
+
+				setTtlMapVal(file.StringForMap(), time.Now().Add(ttlTime))
 			}
 		}
 
@@ -1945,6 +1969,20 @@ func run(dryRun bool) {
 			st := time.Now()
 			loadConfigs(ctx)
 			time.Sleep((25 * time.Second) - time.Since(st))
+		}
+	})
+
+	wg.Go(func() {
+
+		for {
+			st := time.Now()
+			ttlMap := getTtlMap()
+			for _, deadline := range ttlMap {
+				if time.Now().After(deadline) {
+					filesInvalidAdd(1)
+				}
+			}
+			time.Sleep((5 * time.Second) - time.Since(st))
 		}
 	})
 
