@@ -1167,6 +1167,11 @@ func repSaveFileAndFolder(
 
 		cont, err := downloadFileFallback(url)
 		if err != nil {
+			slog.Error(fmt.Sprintf(
+				"error downloading [%s]: %v",
+				url.To,
+				err,
+			))
 			continue
 		}
 
