@@ -1162,7 +1162,10 @@ func repSaveFileAndFolder(
 		renewDeadline, exists := ttlMap[url.StringForMap()]
 		if exists {
 			if time.Now().Before(renewDeadline) {
+				slog.Info("skipping url, deadline not reached")
 				continue
+			} else {
+				slog.Info("url deadline reached!")
 			}
 		}
 
