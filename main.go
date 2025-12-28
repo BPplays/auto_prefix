@@ -1149,8 +1149,10 @@ func repSaveFileAndFolder(
 
 	for _, url := range service.Urls {
 		renewDeadline, exists := ttlMap[url.StringForMap()]
-		if !(exists && time.Now().After(renewDeadline)) {
-			continue
+		if exists {
+			if time.Now().Before(renewDeadline) {
+				continue
+			}
 		}
 
 		cont, err := downloadFileFallback(url)
