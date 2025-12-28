@@ -22,6 +22,7 @@ import (
 	"runtime"
 	"slices"
 	"sync"
+	"io"
 
 	// "os/exec"
 	"encoding/json"
@@ -100,12 +101,21 @@ type FileMapping struct {
 	Perms   FileMode `yaml:"perms"`
 	Owner   string `yaml:"owner"`
 	Group   string `yaml:"group"`
+	Type    string
 }
 
 type jsonIPv6Prefix struct {
 	Prefix netip.Prefix `json:"prefix"`
 }
 
+
+
+type OpnsenseAPI struct {
+	Name                 string        `yaml:"name"`
+	Type                 string        `yaml:"type"`
+	NetName                 string        `yaml:"network_name"`
+	subnets_format                 string        `yaml:"subnets_format"`
+}
 
 type HostCheck struct {
 	VarName                 string        `yaml:"var_name"`
@@ -127,7 +137,11 @@ type Service struct {
 	Name                 string        `yaml:"name"`
 	Files                []FileMapping `yaml:"files"`
 	Folders              []FileMapping `yaml:"folders"`
+	Urls                []FileMapping `yaml:"urls"`
 	RestartCmds          [][]string      `yaml:"restart_cmds"`
+
+	OpnsenseUrl          string      `yaml:"opnsense_url"`
+	OpnsenseAPIs          []OpnsenseAPI      `yaml:"opnsense_apis"`
 
 	SystemdEnable bool    `yaml:"systemd_enable"`
 	SystemdEnableCmdFallback bool    `yaml:"systemd_enable_cmd_fallback"`
@@ -1004,6 +1018,52 @@ func getFilesFromFolders(service Service) ([]FileMapping) {
 	return allFiles
 }
 
+func fastIntPow(base, exp int64) int64 {
+    if exp == 0 {
+        return 1
+    }
+	var result int64
+    result = 1
+    for exp > 0 {
+        if exp%2 == 1 {
+            result *= base
+        }
+        base *= base
+        exp /= 2
+    }
+    return result
+}
+
+func downloadFile(url string) (content string, err error) {
+	tr := &http3.Transport{
+		TLSClientConfig: &tls.Config{
+			NextProtos: []string{http3.NextProtoH3}, // ALPN for HTTP/3
+		},
+		// Optionally adjust QUIC config:
+		// QUICConfig: &quic.Config{HandshakeIdleTimeout: time.Second * 10},
+	}
+	defer tr.Close() // important to close transport
+
+	client := &http.Client{
+		Transport: tr,
+		Timeout:   30 * time.Second,
+	}
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	lr := &io.LimitedReader{R: resp.Body, N: 100 * fastIntPow(10, 6)} // limit to 100 MB
+	body, err := io.ReadAll(lr)
+	if err != nil {
+		return "", err
+	}
+
+	fmt.Printf("http3 downloaded %d bytes, status %s\n", len(body), resp.Status)
+	return string(body), nil
+}
+
 func repSaveFileAndFolder(
 	service Service,
 	prefix netip.Prefix,
@@ -1011,14 +1071,34 @@ func repSaveFileAndFolder(
 ) (changed bool, err error) {
 	logTitleln("Reading and saving files")
 
-	allFiles := getFilesFromFolders(service)
+	var allFiles []FileMapping
+
+	for _, url := range service.Urls {
+		cont, err := downloadFile(url.From)
+		if err != nil {
+			continue
+		}
+		url.From = cont
+		url.Type = "url"
+		allFiles = append(allFiles, url)
+
+
+	}
+
+	allFiles = getFilesFromFolders(service)
 
 	for _, file := range allFiles {
-		// log.Printf("reading: %v\n", file.From)
-		content, err := os.ReadFile(file.From)
-		if err != nil {
-			slog.Error(fmt.Sprintf("error replacing vars: %v", err))
-			continue
+		var content []byte
+
+		if file.Type == "url" {
+			content = []byte(file.From)
+		} else {
+			// log.Printf("reading: %v\n", file.From)
+			content, err = os.ReadFile(file.From)
+			if err != nil {
+				slog.Error(fmt.Sprintf("error replacing vars: %v", err))
+				continue
+			}
 		}
 
 		replacedContent, err := replaceVars(&content, &prefix, service)

@@ -211,3 +211,32 @@ func TestParsing(t *testing.T) {
 	})
 
 }
+
+
+func intpow_stuff(t *testing.T) {
+
+	t.Run("intpow test", func(t *testing.T) {
+		t.Parallel()
+
+		var p int64
+
+		p = fastIntPow(10, 6)
+
+		if p != 1000000 { t.Fail() }
+
+		p = fastIntPow(10, 9)
+
+		if p != 1000000000 { t.Fail() }
+
+		p = fastIntPow(10, 1)
+
+		if p != 10 { t.Fail() }
+
+		p = fastIntPow(10, 0)
+
+		if p != 1 { t.Fail() }
+
+
+	})
+
+}
