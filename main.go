@@ -1153,6 +1153,7 @@ func downloadFile(url string) (string, error) {
 }
 
 func downloadFileFallback(url FileMapping) (string, error) {
+	// TODO: add minimum file lines, e.g. so you can say that it needs atleast 10 for the download to be successful
 	cont, err := downloadFile(url.From)
 	if err != nil {
 		for _, fb := range url.Fallbacks {
