@@ -1338,7 +1338,7 @@ func getPrefix(config Config, noFile bool) (netip.Prefix, error)  {
 
 	tsource, err := source.FromString(config.Source)
 	if err != nil {
-		slog.Error("config source error")
+		slog.Error("config source error: %v", err)
 		os.Exit(1)
 		return netip.Prefix{}, err
 	}
