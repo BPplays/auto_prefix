@@ -6,7 +6,7 @@ require (
 	github.com/coreos/go-systemd/v22 v22.6.0
 	github.com/google/renameio v1.0.1
 	github.com/lmittmann/tint v1.1.2
-	github.com/mattn/go-runewidth v0.0.19
+	github.com/mattn/go-runewidth v0.0.21
 	github.com/prometheus-community/pro-bing v0.7.0
 	github.com/quic-go/quic-go v0.57.1
 	github.com/seancfoley/ipaddress-go v1.7.1
@@ -18,20 +18,16 @@ require (
 )
 
 require (
+	github.com/BPplays/dns_check v0.0.0-20260311211224-251b3b09e654 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
-	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
+	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.0 // indirect
-	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
-	github.com/kr/pretty v0.3.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
 	github.com/seancfoley/bintree v1.3.1 // indirect
 	golang.org/x/crypto v0.46.0 // indirect
-	golang.org/x/mod v0.30.0 // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/sync v0.19.0 // indirect
 	golang.org/x/text v0.32.0 // indirect
-	golang.org/x/tools v0.39.0 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"maps"
@@ -22,7 +23,7 @@ import (
 	"runtime"
 	"slices"
 	"sync"
-	"io"
+	"sync/atomic"
 
 	// "os/exec"
 	"encoding/json"
@@ -35,6 +36,7 @@ import (
 
 	"context"
 
+	"github.com/BPplays/dns_check"
 	"github.com/seancfoley/ipaddress-go/ipaddr"
 	"gopkg.in/yaml.v3"
 
@@ -44,11 +46,11 @@ import (
 	"text/template"
 
 	"github.com/BPplays/auto_prefix/source"
+	"github.com/lmittmann/tint"
+	"github.com/mattn/go-runewidth"
 	"github.com/prometheus-community/pro-bing"
 	"github.com/sevlyar/go-daemon"
 	"gopkg.in/natefinch/lumberjack.v2"
-	"github.com/mattn/go-runewidth"
-	"github.com/lmittmann/tint"
 )
 
 var (
@@ -97,6 +99,7 @@ var ErrStatusCode error = errors.New("http status code indicates an error")
 var interfaceName = ""
 var ut string = ""
 
+var resolvers atomic.Value
 
 type FileMapping struct {
 	From string `yaml:"from"`
@@ -114,15 +117,6 @@ type jsonIPv6Prefix struct {
 	Prefix netip.Prefix `json:"prefix"`
 }
 
-
-
-type OpnsenseAPI struct {
-	Name                 string        `yaml:"name"`
-	Type                 string        `yaml:"type"`
-	NetName                 string        `yaml:"network_name"`
-	subnets_format                 string        `yaml:"subnets_format"`
-}
-
 type HostCheck struct {
 	VarName                 string        `yaml:"var_name"`
 	Host                 string        `yaml:"host"`
@@ -131,11 +125,27 @@ type HostCheck struct {
 	Found                bool
 }
 
+func dnsCheckStoSliceOfFwdGroup(dcs *[]DnsCheckS) (out []dns_check.ForwarderGroup) {
+
+	for _, d := range *dcs {
+		out = append(out, d.Resolvers)
+	}
+
+	return out
+}
+
+type DnsCheckS struct {
+	VarName                 string        `yaml:"var_name"`
+	Resolvers               dns_check.ForwarderGroup          `yaml:"resolvers"`
+	Found                bool
+}
+
 type Config struct {
 	Source                 string        `yaml:"source"`
 	Url                 string        `yaml:"url"`
 	Hosts                 []HostCheck        `yaml:"hosts"`
 	HostsCheckTime                 float64        `yaml:"hosts_check_time"`
+	DnsResolvers                 []DnsCheckS        `yaml:"resolvers"`
 	dryRun                 bool
 }
 
@@ -629,6 +639,7 @@ func varHostFoundAdd(
 	return &out
 }
 
+
 func looseParseSuffix(ipStr string) (netip.Addr, error) {
 	var ip netip.Addr
 	var firstErr error
@@ -650,6 +661,14 @@ func looseParseSuffix(ipStr string) (netip.Addr, error) {
 	return ip, firstErr
 }
 
+func makeDnsMap(dcs *[]DnsCheckS) (*map[string]DnsCheckS) {
+	var out map[string]DnsCheckS
+	for _, d := range *dcs {
+		out[d.VarName] = d
+	}
+	return &out
+}
+
 func replaceVars(
 	content *[]byte,
 	prefix *netip.Prefix,
@@ -660,6 +679,8 @@ func replaceVars(
 	}
 	cacheHostFound := getHostFound()
 	// fmt.Printf("cacheHostFound from replaceVars: %v\n", cacheHostFound)
+
+	cacheDnsFound := resolvers.Load().([]DnsCheckS)
 
 	ipstr := getIpv6Subnet(prefix, 0)
 	// rev_dns := IPv6PrefixToReverseDNSprefixOnly(*prefix, 64, 0)
@@ -690,7 +711,9 @@ func replaceVars(
 	vars = *appendVarMap(&vars, &service.Vars)
 
 	hostsMap := *varHostFoundAdd(&cacheHostFound)
+	dnsMap := *makeDnsMap(&cacheDnsFound)
 	vars["hosts"] = hostsMap
+	vars["resolvers"] = dnsMap
 
 	tpl := template.New("zonefile.tmpl").
 		Funcs(template.FuncMap{
@@ -1878,6 +1901,10 @@ func init() {
 	ctx := context.Background()
 	setEtcDirs()
 	loadConfigs(ctx)
+
+	c := getGlobalConfig()
+	resolvers.Store(c.DnsResolvers)
+
 	globalStartTime = time.Now()
 }
 
@@ -1958,6 +1985,36 @@ func run(dryRun bool) {
 			checkHosts(ctx, conf)
 
 			sleepTime := time.Duration(conf.HostsCheckTime * float64(time.Second)) - time.Since(st)
+			slog.Info(fmt.Sprintf("ping sleeping for %v", sleepTime))
+			time.Sleep(sleepTime)
+		}
+	})
+
+	wg.Go(func() {
+		ctx := context.Background()
+
+		for {
+			st := time.Now()
+			conf := getGlobalConfig()
+
+			var buf bytes.Buffer
+			var fwds []DnsCheckS
+
+			c := dns_check.Config{
+				Forwarders: dnsCheckStoSliceOfFwdGroup(&conf.DnsResolvers),
+				LogWriter: &buf,
+			}
+
+			fwdInt, err := dns_check.RunWithContext(ctx, c)
+			if err != nil {
+				fmt.Printf("err: %v\n", err)
+			} else {
+				fwds = conf.DnsResolvers
+				fwds[fwdInt].Found = true
+				resolvers.Store(fwds)
+			}
+
+			sleepTime := time.Duration(30.0 * float64(time.Second)) - time.Since(st)
 			slog.Info(fmt.Sprintf("ping sleeping for %v", sleepTime))
 			time.Sleep(sleepTime)
 		}
