@@ -2015,7 +2015,7 @@ func run(dryRun bool) {
 
 				fwdInt, err := dns_check.RunWithContext(ctx, c)
 				if err != nil {
-					fmt.Printf("err: %v\n", err)
+					slog.Error(fmt.Sprintf("err: %v\n", err))
 				} else {
 					fwds = conf.DnsResolvers
 					fwds[fwdInt].Found = true
