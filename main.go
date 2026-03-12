@@ -223,10 +223,14 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 func (m FileMode) FileMode() os.FileMode { return os.FileMode(m) }
 
 func filesInvalidAdd(i int64) () {
+	if i < 0 { return }
+
 	filesInvalid.Add(i)
 }
 
 func filesInvalidDone(i int64) () {
+	if i < 0 { return }
+
 	filesInvalid.Add(-i)
 
 	fi := filesInvalid.Load()
