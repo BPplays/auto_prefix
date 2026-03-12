@@ -231,9 +231,9 @@ func filesInvalidAdd(i int64) () {
 func filesInvalidDone(i int64) () {
 	if i < 0 { return }
 
-	filesInvalid.Add(-i)
+	old := filesInvalid.Swap(-i)
 
-	fi := filesInvalid.Load()
+	fi := old - i
 	if fi < 0 {
 		slog.Error("filesInvalid BELOW 0, exiting")
 		os.Exit(1)
