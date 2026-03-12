@@ -82,8 +82,7 @@ var (
 var logFileWriter lumberjack.Logger
 var globalStartTime time.Time
 
-var filesInvalid int = 1
-var filesInvalidMu sync.RWMutex
+var filesInvalid atomic.Int64
 
 var globalConfig Config
 var globalServices []Service
@@ -223,30 +222,26 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 // Convenience to get the real os.FileMode
 func (m FileMode) FileMode() os.FileMode { return os.FileMode(m) }
 
-func filesInvalidAdd(i int) () {
-	filesInvalidMu.Lock()
-	defer filesInvalidMu.Unlock()
-	if filesInvalid < 0 { filesInvalid = 1 }
-	filesInvalid += i
+func filesInvalidAdd(i int64) () {
+	filesInvalid.Add(i)
 }
 
-func filesInvalidDone(i int) () {
-	filesInvalidMu.Lock()
-	defer filesInvalidMu.Unlock()
-	filesInvalid -= i
-	if filesInvalid < 0 { filesInvalid = 1 }
+func filesInvalidDone(i int64) () {
+	filesInvalid.Add(-i)
+
+	fi := filesInvalid.Load()
+	if fi < 0 {
+		slog.Error("filesInvalid BELOW 0, exiting")
+		os.Exit(1)
+	}
 }
 
 func getIsFilesInvalid() (bool) {
-	filesInvalidMu.RLock()
-	defer filesInvalidMu.RUnlock()
-	return filesInvalid > 0
+	return filesInvalid.Load() > 0
 }
 
-func getFilesInvalid() (int) {
-	filesInvalidMu.RLock()
-	defer filesInvalidMu.RUnlock()
-	return filesInvalid
+func getFilesInvalid() (int64) {
+	return filesInvalid.Load()
 }
 
 func setHostFound(newHostCheck map[HostCheck]bool) () {
@@ -447,20 +442,18 @@ func GetBit(ip_bytes [16]byte, bit int) bool {
 }
 
 
-// SetBit sets or clears a specific bit in the IP address based on the value of setToOne.
-func SetBit(ip_bytes [16]byte, bit int, setToOne bool) ([16]byte) {
-	// log.Println("bit:", bit)
-	byteIndex := int(math.Ceil(float64(bit) / (8))+1)  // Calculate the byte position
-	bitIndex := (bit-1) % 8   // Calculate the bit position within that byte
-
-	// log.Printf("biti %v, bytei %v\n", bitIndex, byteIndex)
-	if setToOne {
-		ip_bytes[byteIndex] |= 1 << (7 - bitIndex) // Set the bit to 1
-	} else {
-		ip_bytes[byteIndex] &^= 1 << (7 - bitIndex) // Clear the bit (set to 0)
-	}
-
-	return ip_bytes
+func SetBit(ip_bytes [16]byte, bit int, setToOne bool) [16]byte {
+    if bit < 1 || bit > 128 {
+        return ip_bytes
+    }
+    byteIndex := (bit - 1) / 8
+    bitIndex := (bit - 1) % 8
+    if setToOne {
+        ip_bytes[byteIndex] |= 1 << (7-bitIndex)
+    } else {
+        ip_bytes[byteIndex] &^= 1 << (7-bitIndex)
+    }
+    return ip_bytes
 }
 
 
@@ -662,7 +655,7 @@ func looseParseSuffix(ipStr string) (netip.Addr, error) {
 }
 
 func makeDnsMap(dcs *[]DnsCheckS) (*map[string]DnsCheckS) {
-	var out map[string]DnsCheckS
+	out := make(map[string]DnsCheckS, len(*dcs))
 	for _, d := range *dcs {
 		out[d.VarName] = d
 	}
@@ -851,7 +844,7 @@ func replaceVars(
 func restartFreebsdServices(ctx context.Context, config Service) ([]error) {
 	var errs []error
 
-	if strings.ToLower(runtime.GOOS) == "freebsd" {
+	if strings.ToLower(runtime.GOOS) != "freebsd" {
 		errs = append(errs, errors.ErrUnsupported)
 		return errs
 	}
@@ -1730,11 +1723,11 @@ func pingHost(
 			ctx,
 			(interval) + (10 * time.Millisecond),
 			)
-		defer cancel()
 
 		pinger, err := probing.NewPinger(host.Host)
 		if err != nil {
 			slog.Error(fmt.Sprintf("err making pinger: %v", err))
+			cancel()
 			return false, err
 		}
 
@@ -1771,6 +1764,9 @@ func pingHost(
 			slog.Info(fmt.Sprintf("pinging: %v, result: false", host.Host))
 			result = false
 		}
+
+
+		cancel()
 	}
 
 	return result, nil
@@ -1900,10 +1896,16 @@ func templateLoop(dryRun bool, skipIF *bool) {
 func init() {
 	ctx := context.Background()
 	setEtcDirs()
-	loadConfigs(ctx)
+	err := loadConfigs(ctx)
+	if err != nil {
+		fmt.Printf("error reading config on init: %v", err)
+		os.Exit(1)
+	}
 
 	c := getGlobalConfig()
 	resolvers.Store(c.DnsResolvers)
+
+	filesInvalid.Store(1)
 
 	globalStartTime = time.Now()
 }
@@ -1969,6 +1971,7 @@ func run(dryRun bool) {
 	// log.Println("starting program")
 	// log.Println("using if:", interfaceName)
 
+	conf := getGlobalConfig()
 
 	var wg sync.WaitGroup
 
@@ -1990,35 +1993,39 @@ func run(dryRun bool) {
 		}
 	})
 
-	wg.Go(func() {
-		ctx := context.Background()
 
-		for {
-			st := time.Now()
-			conf := getGlobalConfig()
+	if len(conf.DnsResolvers) > 0 {
+		wg.Go(func() {
+			ctx := context.Background()
 
-			var buf bytes.Buffer
-			var fwds []DnsCheckS
+			for {
+				st := time.Now()
+				conf := getGlobalConfig()
 
-			c := dns_check.Config{
-				Forwarders: dnsCheckStoSliceOfFwdGroup(&conf.DnsResolvers),
-				LogWriter: &buf,
+				var buf bytes.Buffer
+				var fwds []DnsCheckS
+
+				c := dns_check.Config{
+					Forwarders: dnsCheckStoSliceOfFwdGroup(&conf.DnsResolvers),
+					LogWriter: &buf,
+				}
+
+				fwdInt, err := dns_check.RunWithContext(ctx, c)
+				if err != nil {
+					fmt.Printf("err: %v\n", err)
+				} else {
+					fwds = conf.DnsResolvers
+					fwds[fwdInt].Found = true
+					resolvers.Store(fwds)
+				}
+
+				sleepTime := time.Duration(30.0 * float64(time.Second)) - time.Since(st)
+				slog.Info(fmt.Sprintf("ping sleeping for %v", sleepTime))
+				time.Sleep(sleepTime)
 			}
+		})
+	}
 
-			fwdInt, err := dns_check.RunWithContext(ctx, c)
-			if err != nil {
-				fmt.Printf("err: %v\n", err)
-			} else {
-				fwds = conf.DnsResolvers
-				fwds[fwdInt].Found = true
-				resolvers.Store(fwds)
-			}
-
-			sleepTime := time.Duration(30.0 * float64(time.Second)) - time.Since(st)
-			slog.Info(fmt.Sprintf("ping sleeping for %v", sleepTime))
-			time.Sleep(sleepTime)
-		}
-	})
 
 	wg.Go(func() {
 		ctx := context.Background()
