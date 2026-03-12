@@ -240,14 +240,6 @@ func filesInvalidDone(i int64) () {
 	}
 }
 
-func getIsFilesInvalid() (bool) {
-	return filesInvalid.Load() > 0
-}
-
-func getFilesInvalid() (int64) {
-	return filesInvalid.Load()
-}
-
 func setHostFound(newHostCheck map[HostCheck]bool) () {
 	hostFoundMu.Lock()
 	defer hostFoundMu.Unlock()
@@ -1661,13 +1653,18 @@ func loadConfigs(ctx context.Context) (error) {
 	if ctx.Err() != nil { return ctx.Err() }
 
 
+	shouldAddOne := false
 	if !reflect.DeepEqual(getGlobalConfig(), config) ||
 	!reflect.DeepEqual(getGlobalServices(), services) {
-		filesInvalidAdd(1)
+		shouldAddOne = true
 	}
 
 	setGlobalConfig(config)
 	setGlobalServices(services)
+
+	if shouldAddOne {
+		filesInvalidAdd(1)
+	}
 
 	return nil
 }
@@ -1694,12 +1691,14 @@ func checkTemplatesChanged() {
 
 				val, ok := prevTemplateHash[file.From]
 				if !ok {
+					filesInvalidAdd(1)
 					prevTemplateHash[file.From] = content
 					continue
 				}
 
 				if !bytes.Equal(content, val) {
 					filesInvalidAdd(1)
+					prevTemplateHash[file.From] = content
 				}
 			}
 		}
@@ -1865,8 +1864,8 @@ func templateLoop(dryRun bool, skipIF *bool) {
 		if currentIPv6Prefix != lastIPv6Prefix { filesInvalidAdd(1) }
 
 
-		startFilesInvalid := getFilesInvalid()
-		if getIsFilesInvalid() {
+		startFilesInvalid := filesInvalid.Load()
+		if startFilesInvalid > 0 {
 
 			slog.Info(fmt.Sprintf("slept until: %v", sleep_ut))
 			slog.Info(fmt.Sprintf("prefix: %v", currentIPv6Prefix))
