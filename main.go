@@ -1917,6 +1917,7 @@ func init() {
 func run(dryRun bool) {
 
 	daemonFlag := flag.Bool("d", false, "run as daemon")
+	logToFileFlag := flag.Bool("l", false, "log to a file even if not daemon")
 	pidFile := flag.String("pid", fmt.Sprintf("/var/run/%v.pid", progName), "PID file path")
 	logFile := flag.String("log", fmt.Sprintf("/var/log/%v.log", progName), "log file path for rotated logs")
 	niceness := flag.Int("nice", 5, "the niceness to use for the proc")
@@ -1944,6 +1945,11 @@ func run(dryRun bool) {
 			return
 		}
 		defer cntxt.Release()
+	} else {
+
+
+	}
+	if *daemonFlag || *logToFileFlag {
 		logFileWriter = lumberjack.Logger{
 			Filename:   *logFile,
 			MaxSize:    5,    // megabytes
@@ -1957,12 +1963,10 @@ func run(dryRun bool) {
 		// if you don't do this it prints to log maybe? what?
 		slog.SetDefault(slog.New(handl))
 	} else {
-
 		handl := tint.NewHandler(os.Stdout, &tint.Options{
 			TimeFormat: "2006年01月02日 15時04分05.000秒",
 		})
 		slog.SetDefault(slog.New(handl))
-
 	}
 
 	if err := setNiceness(*niceness); err != nil {
