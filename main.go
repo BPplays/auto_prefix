@@ -323,6 +323,15 @@ func setEtcDirs() {
 	IfFile = filepath.Join(etcBase, "main_interface")
 	PdFile = filepath.Join(etcBase, "pd_size")
 }
+func servicesNameToString(services []Service) string {
+	names := make([]string, 0, len(services))
+
+	for _, service := range services {
+		names = append(names, service.Name)
+	}
+
+	return strings.Join(names, ", ")
+}
 
 func logTitleln(v ...any) {
 	var strs []string
@@ -923,7 +932,7 @@ func inferHostIndex() (hostIndex int, err error) {
 
 
 func restartServices(service Service) {
-	logTitleln("Restarting services")
+	logTitleln(fmt.Sprintf("Restarting service: %v", service.Name))
 
 	if service.RestartTimeout <= 0 {
 		service.RestartTimeout = 10
@@ -1851,6 +1860,7 @@ func templateLoop(dryRun bool, skipIF *bool) {
 		config := getGlobalConfig()
 		config.dryRun = dryRun
 		services := getGlobalServices()
+		slog.Info(fmt.Sprintf("loaded services: %v", servicesNameToString(services)))
 
 		ut = get_dns_ut()
 
