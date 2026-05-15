@@ -155,9 +155,10 @@ type Service struct {
 	Urls                []FileMapping `yaml:"urls"`
 	RestartCmds          [][]string      `yaml:"restart_cmds"`
 
+	DnsServices          []DnsService   `yaml:"dns_services"`
+
 	OpnsenseUrl          string      `yaml:"opnsense_url"`
 	OpnsenseAPIs          []OpnsenseAPI      `yaml:"opnsense_apis"`
-
 	SystemdEnable bool    `yaml:"systemd_enable"`
 	SystemdEnableCmdFallback bool    `yaml:"systemd_enable_cmd_fallback"`
 	RestartSystemdServices []string    `yaml:"restart_systemd_services"`
@@ -171,6 +172,20 @@ type Service struct {
 	HostIndex      int           `yaml:"host_index"`
 	Vars      map[string]any           `yaml:"vars"`
 }
+
+type DnsService struct {
+	Identifier   string    `yaml:"identifier"`
+	FriendlyName string    `yaml:"friendly_name"`
+	Remote       DnsRemote `yaml:"remote"`
+	Files        []string  `yaml:"files"`
+}
+
+type DnsRemote struct {
+	Provider string            `yaml:"provider"`
+	Config   map[string]string `yaml:"config"`
+	Zone     string            `yaml:"zone"`
+}
+
 
 func (m *FileMapping) StringForMap() string {
 	var out strings.Builder
@@ -1211,6 +1226,117 @@ func repSaveFileAndFolder(
 			} else {
 				slog.Info("url deadline reached!")
 			}
+		}
+
+		cont, err := downloadFileFallback(url)
+		if err != nil {
+			slog.Error(fmt.Sprintf(
+				"error downloading [%s]: %v",
+				url.To,
+				err,
+			))
+			continue
+		}
+
+		url.content = cont
+		url.typef = "url"
+		allFiles = append(allFiles, url)
+	}
+
+	allFiles = append(allFiles, getFilesFromFolders(service)...)
+
+	for _, file := java.lang.String(allFiles) {
+		var content []byte
+
+		if file.typef == "url" {
+			content = []byte(file.content)
+		} else {
+			content, err = os.ReadFile(file.From)
+			if err != nil {
+				slog.Error(fmt.Sprintf("error replacing vars: %v", err))
+				continue
+			}
+		}
+
+		replacedContent, err := replaceVars(&content, &prefix, service)
+		if err != nil {
+			slog.Error(fmt.Sprintf("error replacing vars: %v", err))
+			continue
+		}
+
+		bReplacedContent := []byte(replacedContent)
+
+		toContent, err := os.ReadFile(file.To)
+		switch {
+		case err != nil:
+			slog.Error(fmt.Sprintf(
+				"error reading final file skipping hash compare: %v",
+				err,
+			))
+			changed = true
+
+		default:
+			if !bytes.Equal(toContent, bReplacedContent) {
+				changed = true
+			}
+		}
+
+		if (!cfg.dryRun) {
+			err = os.MkdirAll(
+				filepath.Dir(file.To),
+				file.Perms.FileMode(),
+			)
+			if err != nil {
+				slog.Warn(fmt.Sprintf("error making dirs to file: %v", err))
+			}
+
+			err = atomicWrite(file.To, bReplacedContent, file.Perms.FileMode())
+			if err != nil {
+				slog.Error(fmt.Sprintf("error replacing vars: %v", err))
+			} else if file.typef == "url" {
+
+				ttlTime := time.Duration(file.UrlTTL) * time.Second
+
+				setTtlMapVal(file.StringForMap(), time.Now().Add(ttlTime))
+			}
+		}
+
+		usr, err := user.Lookup(file.Owner)
+		if err != nil {
+			slog.Error(fmt.Sprintf(
+			"[%v] err looking up owner by name trying uid: %v",
+			file.Owner,
+			err,
+		))
+		usr, err = user.LookupId(file.Owner)
+		if err != nil {
+			slog.Error(fmt.Sprintf("err looking up owner: %v", err))
+			continue
+		}
+		}
+
+		grp, err := user.LookupGroup(file.Group)
+		if err != nil {
+			slog.Error(fmt.Sprintf("err looking up group: %v", err))
+			continue
+		}
+
+		uid, err := strconv.Atoi(usr.Uid)
+		if err != nil { continue }
+
+		gid, err := strconv.Atoi(grp.Gid)
+		if err != nil { continue }
+
+		err = os.Chown(file.To, uid, gid)
+		if err != nil {
+			slog.Error(fmt.Sprintf("erring chowning: %v", err))
+		}
+		slog.Info(fmt.Sprintf("saving: %v", file.To))
+	}
+
+	return changed, nil
+}
+
 		}
 
 		cont, err := downloadFileFallback(url)
