@@ -15,6 +15,10 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 	gopkg.in/yaml.v3 v3.0.1
 	tailscale.com v1.92.2
+	github.com/libdns/libdns v0.9.0
+	github.com/libdns/cloudflare v0.2.0
+	codeberg.org/miekg/dns v2.1.0
+	golang.org/x/net v0.48.0
 )
 
 require (

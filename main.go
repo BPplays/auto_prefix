@@ -146,6 +146,7 @@ type Config struct {
 	HostsCheckTime                 float64        `yaml:"hosts_check_time"`
 	DnsResolvers                 []DnsCheckS        `yaml:"resolvers"`
 	dryRun                 bool
+	NetworkMonitor         NetworkMonitorConfig      `yaml:"network_monitor"`
 }
 
 type Service struct {
@@ -170,6 +171,7 @@ type Service struct {
 	RestartTimeout      int           `yaml:"restart_timeout"`
 	HostIndex      int           `yaml:"host_index"`
 	Vars      map[string]any           `yaml:"vars"`
+	DnsServices      []DnsService      `yaml:"dns_services"`
 }
 
 func (m *FileMapping) StringForMap() string {
@@ -1995,6 +1997,21 @@ func run(dryRun bool) {
 	wg.Go(func() {
 		templateLoop(dryRun, skipIF)
 	})
+
+	// Start network monitor if configured
+	conf := getGlobalConfig()
+	if conf.NetworkMonitor.PriorityList != nil && len(conf.NetworkMonitor.PriorityList) > 0 {
+		slog.Info("Starting network monitor")
+		networkMonitor, err := NewNetworkMonitor(conf.NetworkMonitor, slog.Default())
+		if err != nil {
+			slog.Error("Failed to create network monitor", "error", err)
+		} else {
+			err := networkMonitor.Start()
+			if err != nil {
+				slog.Error("Failed to start network monitor", "error", err)
+			}
+		}
+	}
 
 	wg.Go(func() {
 		ctx := context.Background()
