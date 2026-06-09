@@ -5,13 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"os"
-	"reflect"
 	"strings"
 	"sync"
 	"time"
-
-	"golang.org/x/net/context/ctxhttp"
 )
 
 // NetworkMonitor manages network monitoring and failover logic for DNS services
@@ -220,23 +216,21 @@ func (n *NetworkMonitor) checkAndHandleFailover() error {
 // isHostResponding checks if a given host and port are reachable using ping or HTTP
 func (n *NetworkMonitor) isHostResponding(addr string) error {
 	// Try ICMP ping first for basic network connectivity check
-	host, port, err := net.SplitHostPort(addr)
+	conn, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return fmt.Errorf("invalid address format: %s", addr)
 	}
 	
-	// We'll first try a simple TCP connection to establish whether the system is up
-	// Create context with timeout for connection test
 	ctx, cancel := context.WithTimeout(n.ctx, time.Second*2)
 	defer cancel()
 	
-	// For simplicity we connect to port 20455 which is our listener's port
-	conn, err := ctxhttp.Connect(ctx, &net.Dialer{}, "tcp", addr)
+	dialer := &net.Dialer{}
+	c, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(conn, port))
 	if err != nil {
 		return fmt.Errorf("host %s unreachable: %w", addr, err)
 	}
 	
-	conn.Close()
+	c.Close()
 	n.logger.Debug("Host responding at", "address", addr)
 	return nil
 }

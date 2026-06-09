@@ -1620,22 +1620,12 @@ func addrToNetIPaddr(addr net.Addr) (netip.Addr, error) {
 
 // isULA checks if the given IP address is a Unique Local Address (ULA).
 func isULA(ip netip.Addr) bool {
-	// ULA range is fc00::/7
-	ula, err := netip.ParsePrefix("fc00::/7")
-	if err != nil {
-
-	}
-	return ula.Contains(ip)
+	return ip.IsPrivate() && ip.Is6()
 }
 
 // isLinkLocal checks if the given IP address is a link-local address.
 func isLinkLocal(ip netip.Addr) bool {
-	// Link-local range is fe80::/10
-	linkLocal, err := netip.ParsePrefix("fe80::/10")
-	if err != nil {
-
-	}
-	return linkLocal.Contains(ip)
+	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
 }
 
 // isValidIPprefixAddress checks if an IP address is not link-local, not ULA, and not loopback.
@@ -1737,6 +1727,8 @@ func pingHost(
 			ctx,
 			(interval) + (10 * time.Millisecond),
 			)
+
+		defer cancel()
 
 		pinger, err := probing.NewPinger(host.Host)
 		if err != nil {
@@ -1999,8 +1991,7 @@ func run(dryRun bool) {
 	})
 
 	// Start network monitor if configured
-	conf := getGlobalConfig()
-	if conf.NetworkMonitor.PriorityList != nil && len(conf.NetworkMonitor.PriorityList) > 0 {
+	if len(conf.NetworkMonitor.PriorityList) > 0 {
 		slog.Info("Starting network monitor")
 		networkMonitor, err := NewNetworkMonitor(conf.NetworkMonitor, slog.Default())
 		if err != nil {
