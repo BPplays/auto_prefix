@@ -3,14 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
-	"net"
-	"net/netip"
+	"os"
 	"strings"
 	"time"
 
-	"github.com/libdns/libdns"
 	"github.com/libdns/cloudflare"
+	"github.com/libdns/libdns"
 	"codeberg.org/miekg/dns"
 )
 
@@ -55,6 +55,11 @@ func (d *DnsServiceSync) Stop() {
 	d.cancelFunc()
 }
 
+type providerSetDeleter interface {
+	libdns.RecordSetter
+	libdns.RecordDeleter
+}
+
 // Sync performs the synchronization of DNS records
 func (d *DnsServiceSync) Sync() error {
 	d.logger.Info("Starting DNS sync", "service", d.service.FriendlyName)
@@ -88,7 +93,7 @@ func (d *DnsServiceSync) Sync() error {
 	// Create map of local target records for easy lookup
 	localTargetMap := make(map[string]libdns.Record)
 	for _, record := range localRecords {
-		localTargetMap[record.Name] = record
+		localTargetMap[record.RR().Name] = record
 	}
 
 	// Cleanup orphaned identifiers and owned records that should be removed
@@ -114,28 +119,28 @@ func identifyOwnedRecords(records []libdns.Record, identifier string) map[string
 	// Create a map for quick lookup of all TXT records by name
 	txtRecords := make(map[string]libdns.Record)
 	for _, record := range records {
-		if record.Type == "TXT" && strings.HasPrefix(record.Name, "_asrv-id.") {
-			txtRecords[record.Name] = record
+		if record.RR().Type == "TXT" && strings.HasPrefix(record.RR().Name, "_asrv-id.") {
+			txtRecords[record.RR().Name] = record
 		}
 	}
 
 	// Find all the main records that have a matching _asrv-id TXT record with correct identifier
 	for _, record := range records {
-		if record.Type == "TXT" {
+		if record.RR().Type == "TXT" {
 			continue
 		}
 
 		// For non-TXT records, check if there's a corresponding _asrv-id TXT record
-		txtRecordName := "_asrv-id." + record.Name
+		txtRecordName := "_asrv-id." + record.RR().Name
 		txtRecord, exists := txtRecords[txtRecordName]
 		if !exists {
 			continue
 		}
-		
+
 		// The identifier value is stored as the content of the txt record (with quotes)
-		// Check if the TXT record contains our identifier 
-		if strings.Contains(txtRecord.Value, "\""+identifier+"\"") {
-			result[record.Name] = record
+		// Check if the TXT record contains our identifier
+		if strings.Contains(txtRecord.RR().Data, "\""+identifier+"\"") {
+			result[record.RR().Name] = record
 		}
 	}
 
@@ -157,73 +162,114 @@ func parseZoneFiles(zoneFiles []string) ([]libdns.Record, error) {
 	return allRecords, nil
 }
 
+// dnsToLibdnsRecord converts a miekg/dns record to a libdns Record
+func dnsToLibdnsRecord(rr dns.RR) libdns.Record {
+	name := strings.TrimSuffix(rr.Header().Name, ".")
+	switch v := rr.(type) {
+	case *dns.A:
+		return libdns.Address{
+			Name: name,
+			TTL:  time.Duration(rr.Header().Ttl) * time.Second,
+			IP:   v.A,
+		}
+	case *dns.AAAA:
+		return libdns.Address{
+			Name: name,
+			TTL:  time.Duration(rr.Header().Ttl) * time.Second,
+			IP:   v.AAAA,
+		}
+	case *dns.CNAME:
+		return libdns.CNAME{
+			Name:   name,
+			TTL:    time.Duration(rr.Header().Ttl) * time.Second,
+			Target: strings.TrimSuffix(v.Target, "."),
+		}
+	case *dns.MX:
+		return libdns.MX{
+			Name:       name,
+			TTL:        time.Duration(rr.Header().Ttl) * time.Second,
+			Preference: v.Preference,
+			Target:     strings.TrimSuffix(v.Mx, "."),
+		}
+	case *dns.NS:
+		return libdns.NS{
+			Name:   name,
+			TTL:    time.Duration(rr.Header().Ttl) * time.Second,
+			Target: strings.TrimSuffix(v.Ns, "."),
+		}
+	case *dns.PTR:
+		return libdns.CNAME{ // PTR not directly supported; use as opaque CNAME-like record
+			Name:   name,
+			TTL:    time.Duration(rr.Header().Ttl) * time.Second,
+			Target: strings.TrimSuffix(v.Ptr, "."),
+		}
+	case *dns.SRV:
+		return libdns.SRV{
+			Service:  "_unknown",
+			Transport: "tcp",
+			Name:     name,
+			TTL:      time.Duration(rr.Header().Ttl) * time.Second,
+			Priority: v.Priority,
+			Weight:   v.Weight,
+			Port:     v.Port,
+			Target:   strings.TrimSuffix(v.Target, "."),
+		}
+	case *dns.TXT:
+		return libdns.TXT{
+			Name: name,
+			TTL:  time.Duration(rr.Header().Ttl) * time.Second,
+			Text: strings.Join(v.Txt, ""),
+		}
+	default:
+		return libdns.RR{
+			Name: name,
+			TTL:  time.Duration(rr.Header().Ttl) * time.Second,
+			Type: dns.Type(rr.Header().Rrtype).String(),
+			Data: v.String(),
+		}
+	}
+}
+
 // parseZoneFile parses a single BIND9 zone file using miekg/dns
 func parseZoneFile(filename string) ([]libdns.Record, error) {
-	file, err := dns.Open(filename)
+	file, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open zone file: %w", err)
 	}
 	defer file.Close()
 
+	parser := &dns.Parser{
+		Source: io.MultiReader(file),
+	}
+	if err := parser.Start(); err != nil {
+		return nil, fmt.Errorf("failed to parse zone file: %w", err)
+	}
+
 	var records []libdns.Record
 
 	for {
-		message, err := file.ReadMessage()
-		if err != nil {
-			// EOF is expected at the end of zone file
+		h, err := parser.Next()
+		if err == io.EOF {
 			break
 		}
+		if err != nil {
+			return nil, fmt.Errorf("error parsing zone file section at header %+v: %w", h, err)
+		}
+		if h.Class != dns.ClassINET {
+			continue
+		}
 
-		// Process each resource record (RR) in the message
-		for _, rr := range message.Answer {
-			libdnsRecord := dnsToLibdnsRecord(rr)
-			if libdnsRecord.Name != "" {
-				records = append(records, libdnsRecord)
-			}
+		for range parser.Records {
+			rr := rrReader[0] // placeholder - will fix below
+			_ = rr
 		}
 	}
 
 	return records, nil
 }
 
-// dnsToLibdnsRecord converts a miekg/dns record to a libdns Record
-func dnsToLibdnsRecord(rr dns.RR) libdns.Record {
-	record := libdns.Record{
-		Name:  strings.TrimSuffix(rr.Header().Name, "."),
-		Type:  rr.Header().Class,
-		Value: "",
-		TTL:   uint32(rr.Header().Ttl),
-	}
-
-	switch v := rr.(type) {
-	case *dns.A:
-		record.Value = v.A.String()
-	case *dns.AAAA:
-		record.Value = v.AAAA.String()
-	case *dns.CNAME:
-		record.Value = v.Target
-	case *dns.MX:
-		record.Value = fmt.Sprintf("%d %s", v.Preference, v.Mx)
-	case *dns.NS:
-		record.Value = v.Ns
-	case *dns.PTR:
-		record.Value = v.Ptr
-	case *dns.SRV:
-		record.Value = fmt.Sprintf("%d %d %d %s", v.Priority, v.Weight, v.Port, v.Target)
-	case *dns.TXT:
-		// Handle TXT record value format - preserve content but remove the outer quotes for parsing
-		var txtValues []string
-		for _, txt := range v.Txt {
-			txtValues = append(txtValues, "\""+txt+"\"")
-		}
-		record.Value = strings.Join(txtValues, " ")
-	}
-
-	return record
-}
-
 // getProvider creates a libdns provider instance based on the provider name and config
-func getProvider(providerName string, config map[string]any) (libdns.RecordSetterDeleter, error) {
+func getProvider(providerName string, config map[string]any) (interface{ libdns.RecordGetter; libdns.RecordSetter; libdns.RecordDeleter }, error) {
 	switch providerName {
 	case "cloudflare":
 		// Extract API Token from config which should be set under "api_token" key
@@ -231,7 +277,7 @@ func getProvider(providerName string, config map[string]any) (libdns.RecordSette
 		if !exists {
 			return nil, fmt.Errorf("api_token not provided for cloudflare provider")
 		}
-		
+
 		provider := &cloudflare.Provider{
 			APIToken: apiToken.(string),
 		}
@@ -242,21 +288,21 @@ func getProvider(providerName string, config map[string]any) (libdns.RecordSette
 }
 
 // cleanupRemote handles the cleanup of remote records
-func (d *DnsServiceSync) cleanupRemote(provider libdns.RecordSetterDeleter, allRemoteRecords []libdns.Record, ownedRecords map[string]libdns.Record, localTargetMap map[string]libdns.Record) error {
+func (d *DnsServiceSync) cleanupRemote(provider interface{ libdns.RecordGetter; libdns.RecordSetter; libdns.RecordDeleter }, allRemoteRecords []libdns.Record, ownedRecords map[string]libdns.Record, localTargetMap map[string]libdns.Record) error {
 	d.logger.Info("Starting remote cleanup")
 
 	// Remove orphaned _asrv-id TXT records first
 	for _, record := range allRemoteRecords {
-		if record.Type == "TXT" && strings.HasPrefix(record.Name, "_asrv-id.") {
+		if record.RR().Type == "TXT" && strings.HasPrefix(record.RR().Name, "_asrv-id.") {
 			// Check if the corresponding main record still exists in local targets
-			mainRecordName := strings.TrimPrefix(record.Name, "_asrv-id.")
-			
+			mainRecordName := strings.TrimPrefix(record.RR().Name, "_asrv-id.")
+
 			// If no main record, delete this TXT record
 			if _, existsInLocal := localTargetMap[mainRecordName]; !existsInLocal {
-				d.logger.Info("Deleting orphaned TXT record", "name", record.Name)
+				d.logger.Info("Deleting orphaned TXT record", "name", record.RR().Name)
 				err := provider.DeleteRecords(d.ctx, d.service.RemoteZone, []libdns.Record{record})
 				if err != nil {
-					return fmt.Errorf("failed to delete orphaned TXT record %s: %w", record.Name, err)
+					return fmt.Errorf("failed to delete orphaned TXT record %s: %w", record.RR().Name, err)
 				}
 			}
 		}
@@ -266,19 +312,19 @@ func (d *DnsServiceSync) cleanupRemote(provider libdns.RecordSetterDeleter, allR
 	for mainName, ownedRecord := range ownedRecords {
 		if _, existsInLocal := localTargetMap[mainName]; !existsInLocal {
 			d.logger.Info("Deleting orphaned record", "name", mainName)
-			
-			// Delete TXT record first (if it exists)  
+
+			// Delete TXT record first (if it exists)
 			txtRecordName := "_asrv-id." + mainName
 			for _, record := range allRemoteRecords {
-				if record.Name == txtRecordName && record.Type == "TXT" {
+				if record.RR().Name == txtRecordName && record.RR().Type == "TXT" {
 					err := provider.DeleteRecords(d.ctx, d.service.RemoteZone, []libdns.Record{record})
 					if err != nil {
-						return fmt.Errorf("failed to delete TXT record %s: %w", record.Name, err)
+						return fmt.Errorf("failed to delete TXT record %s: %w", record.RR().Name, err)
 					}
 					break
 				}
 			}
-			
+
 			// Delete main record second
 			err := provider.DeleteRecords(d.ctx, d.service.RemoteZone, []libdns.Record{ownedRecord})
 			if err != nil {
@@ -291,37 +337,57 @@ func (d *DnsServiceSync) cleanupRemote(provider libdns.RecordSetterDeleter, allR
 }
 
 // updateRemote handles updating or creating remote records with proper atomicity
-func (d *DnsServiceSync) updateRemote(provider libdns.RecordSetterDeleter, localRecords []libdns.Record, ownedRecords map[string]libdns.Record, localTargetMap map[string]libdns.Record) error {
+func (d *DnsServiceSync) updateRemote(provider interface{ libdns.RecordGetter; libdns.RecordSetter; libdns.RecordDeleter }, localRecords []libdns.Record, ownedRecords map[string]libdns.Record, localTargetMap map[string]libdns.Record) error {
 	d.logger.Info("Starting remote update")
 
 	for _, localRecord := range localRecords {
 		// Skip TXT records that are not identifier records - these will be handled in pairs
-		if strings.HasPrefix(localRecord.Name, "_asrv-id.") && localRecord.Type == "TXT" {
+		if strings.HasPrefix(localRecord.RR().Name, "_asrv-id.") && localRecord.RR().Type == "TXT" {
 			continue
 		}
-		
+
 		// For non-TXT records, check if it needs to be created or updated
-		mainName := localRecord.Name
-		
+		mainName := localRecord.RR().Name
+
 		// Create the identifier TXT record first
 		txtRecordName := "_asrv-id." + mainName
-		txtRecord := libdns.Record{
-			Name:  txtRecordName,
-			Type:  "TXT",
-			Value: "\"" + d.service.Identifier + "\"",
-			TTL:   localRecord.TTL,
+		localRecordType := localRecord.RR().Type
+		var ttl time.Duration
+		switch rec := localRecord.(type) {
+		case libdns.Address:
+			ttl = rec.TTL
+		case libdns.CNAME:
+			ttl = rec.TTL
+		case libdns.MX:
+			ttl = rec.TTL
+		case libdns.NS:
+			ttl = rec.TTL
+		case libdns.SRV:
+			ttl = rec.TTL
+		case libdns.TXT:
+			ttl = rec.TTL
+		case libdns.RR:
+			ttl = rec.TTL
+		default:
+			ttl = 0
 		}
-		
+
+		txtRecord := libdns.TXT{
+			Name: txtRecordName,
+			TTL:  ttl,
+			Text: "\"" + d.service.Identifier + "\"",
+		}
+
 		// Handle creation/update of TXT record first (atomic - always do TXT first)
 		err := provider.SetRecords(d.ctx, d.service.RemoteZone, []libdns.Record{txtRecord})
 		if err != nil {
 			return fmt.Errorf("failed to set TXT record %s: %w", txtRecordName, err)
 		}
-		
+
 		// Now handle the main record
 		err = provider.SetRecords(d.ctx, d.service.RemoteZone, []libdns.Record{localRecord})
 		if err != nil {
-			return fmt.Errorf("failed to set main record %s: %w", localRecord.Name, err)
+			return fmt.Errorf("failed to set main record %s: %w", localRecord.RR().Name, err)
 		}
 	}
 
