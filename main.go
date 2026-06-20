@@ -13,6 +13,7 @@ import (
 	"maps"
 	"math"
 	"math/rand"
+	crand "crypto/rand"
 	"net"
 	"net/http"
 	"net/netip"
@@ -139,6 +140,12 @@ type DnsCheckS struct {
 	Found                bool
 }
 
+type DNSSECzone struct {
+	File string `yaml:"file"`
+	Domain string `yaml:"domain"`
+	KeyDir string `yaml:"key_dir"`
+}
+
 type Config struct {
 	Source                 string        `yaml:"source"`
 	Url                 string        `yaml:"url"`
@@ -172,6 +179,7 @@ type Service struct {
 	HostIndex      int           `yaml:"host_index"`
 	Vars      map[string]any           `yaml:"vars"`
 	DnsServices      []DnsService      `yaml:"dns_services"`
+	DNSSECzones      []DNSSECzone      `yaml:"dnssec_zones"`
 }
 
 func (m *FileMapping) StringForMap() string {
@@ -220,6 +228,8 @@ func (m *FileMode) UnmarshalYAML(node *yaml.Node) error {
 	// log.Printf("[fmum] m after is %v\n", *m)
 	return nil
 }
+
+var salt_startup_rand = crand.Text()
 
 // Convenience to get the real os.FileMode
 func (m FileMode) FileMode() os.FileMode { return os.FileMode(m) }
@@ -1821,6 +1831,44 @@ func checkHosts(ctx context.Context, conf Config) {
 }
 
 
+func generateDNSSEC(srv Service) []error {
+	var errs []error
+	for _, dsec := range srv.DNSSECzones {
+		salt_str := fmt.Sprintf(
+			"%v%v%v",
+			dsec.Domain,
+			dsec.File,
+			salt_startup_rand,
+		)
+		b := []byte(salt_str)
+		saltb, err := defHash(&b)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		salt := string(*saltb)
+
+		cmd := exec.Command(
+			"dnssec-signzone",
+			"-K", dsec.KeyDir,
+			"-o", dsec.Domain,
+			"-t",
+			"-N", "increment",
+			"-3", salt,
+			dsec.File,
+		)
+
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		err = cmd.Run()
+		if err != nil {
+			errs = append(errs, err)
+		}
+
+	}
+	return errs
+}
+
 
 func templateLoop(dryRun bool, skipIF *bool) {
 	var lastIPv6Prefix netip.Prefix = netip.PrefixFrom(netip.IPv6Unspecified(), 0)
@@ -1883,6 +1931,14 @@ func templateLoop(dryRun bool, skipIF *bool) {
 				}
 
 				if changed {
+					errs := generateDNSSEC(service)
+					for _, err := range errs {
+						if err != nil {
+							slog.Error(
+								fmt.Sprint(err),
+							)
+						}
+					}
 					logTitleln("some files changed")
 					restartServices(service)
 				}
