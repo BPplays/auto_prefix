@@ -1872,7 +1872,8 @@ func generateDNSSEC(srv Service) []error {
 		}
 
 		slog.Info(
-			fmt.Sprint(cmd.Stdout, cmd.Args, ),
+			fmt.Sprint(cmd.CombinedOutput()),
+			slog.String("args", fmt.Sprint(cmd.Args)),
 		)
 
 	}
