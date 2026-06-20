@@ -1855,14 +1855,15 @@ func generateDNSSEC(srv Service) []error {
 
 		cmd := exec.Command(
 			"dnssec-signzone",
-			dsec.KeyPair.ZSK,
-			dsec.KeyPair.KSK,
 			// "-K", dsec.KeyDir,
 			"-o", dsec.Domain,
 			"-t",
 			"-N", "increment",
 			"-3", salt,
 			dsec.File,
+
+			dsec.KeyPair.ZSK,
+			dsec.KeyPair.KSK,
 		)
 
 		out, err := cmd.CombinedOutput()
