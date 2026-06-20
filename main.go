@@ -1862,10 +1862,11 @@ func generateDNSSEC(srv Service) []error {
 			"-N", "increment",
 			"-3", salt,
 			dsec.File,
-
-			dsec.KeyPair.ZSK,
-			dsec.KeyPair.KSK,
 		)
+		if dsec.KeyPair.KSK != "" && dsec.KeyPair.ZSK != "" {
+			cmd.Args = append(cmd.Args, dsec.KeyPair.KSK)
+			cmd.Args = append(cmd.Args, dsec.KeyPair.ZSK)
+		}
 
 		out, err := cmd.CombinedOutput()
 		if err != nil {
