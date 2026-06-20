@@ -1941,6 +1941,7 @@ func templateLoop(dryRun bool, skipIF *bool) {
 				changed, err := repSaveFileAndFolder(service, currentIPv6Prefix, config)
 				if err != nil {
 					slog.Error(fmt.Sprintln("Error:", err))
+					filesInvalidAdd(1)
 					changed = true
 				}
 
@@ -1951,6 +1952,7 @@ func templateLoop(dryRun bool, skipIF *bool) {
 							slog.Error(
 								fmt.Sprint(err),
 							)
+							filesInvalidAdd(1)
 						}
 					}
 					logTitleln("some files changed")
