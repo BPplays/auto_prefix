@@ -141,10 +141,15 @@ type DnsCheckS struct {
 	Found                bool
 }
 
+type DNSSECkeypairFile struct {
+	KSK string `yaml:"ksk"`
+	ZSK string `yaml:"zsk"`
+}
+
 type DNSSECzone struct {
 	File string `yaml:"file"`
 	Domain string `yaml:"domain"`
-	KeyDir string `yaml:"key_dir"`
+	KeyPair DNSSECkeypairFile `yaml:"key_pair_files"`
 }
 
 type Config struct {
@@ -1850,7 +1855,9 @@ func generateDNSSEC(srv Service) []error {
 
 		cmd := exec.Command(
 			"dnssec-signzone",
-			"-K", dsec.KeyDir,
+			dsec.KeyPair.ZSK,
+			dsec.KeyPair.KSK,
+			// "-K", dsec.KeyDir,
 			"-o", dsec.Domain,
 			"-t",
 			"-N", "increment",
