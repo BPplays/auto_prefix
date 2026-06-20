@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	crand "crypto/rand"
 	"crypto/sha3"
 	"crypto/tls"
 	"errors"
@@ -13,7 +14,6 @@ import (
 	"maps"
 	"math"
 	"math/rand"
-	crand "crypto/rand"
 	"net"
 	"net/http"
 	"net/netip"
@@ -27,6 +27,7 @@ import (
 	"sync/atomic"
 
 	// "os/exec"
+	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
 	"strconv"
@@ -1845,7 +1846,7 @@ func generateDNSSEC(srv Service) []error {
 		if err != nil {
 			errs = append(errs, err)
 		}
-		salt := string(*saltb)
+		salt := hex.EncodeToString(*saltb)
 
 		cmd := exec.Command(
 			"dnssec-signzone",
@@ -1871,7 +1872,7 @@ func generateDNSSEC(srv Service) []error {
 		}
 
 		slog.Info(
-			fmt.Sprint(cmd.Stdout, cmd.Args),
+			fmt.Sprint(cmd.Stdout, cmd.Args, ),
 		)
 
 	}
