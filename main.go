@@ -1856,6 +1856,7 @@ func generateDNSSEC(srv Service) []error {
 
 		cmd := exec.Command(
 			"dnssec-signzone",
+			"-S",
 			"-K", dsec.KeyPair.Dir,
 			"-o", dsec.Domain,
 			"-t",
