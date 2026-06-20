@@ -1861,11 +1861,18 @@ func generateDNSSEC(srv Service) []error {
 		cmd.Stderr = os.Stderr
 
 		err = cmd.Run()
+		if err == nil {
+			if fmt.Sprint(cmd.Stderr) != "" {
+				err = fmt.Errorf("%v", cmd.Stderr)
+			}
+		}
 		if err != nil {
 			errs = append(errs, err)
 		}
 
-		slog.Info(fmt.Sprint(cmd.Stdout))
+		slog.Info(
+			fmt.Sprint(cmd.Stdout, cmd.Args),
+		)
 
 	}
 	return errs
