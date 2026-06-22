@@ -1946,6 +1946,8 @@ func templateLoop(dryRun bool, skipIF *bool) {
 				}
 
 				if changed {
+					logTitleln("some files changed")
+
 					errs := generateDNSSEC(service)
 					for _, err := range errs {
 						if err != nil {
@@ -1955,7 +1957,6 @@ func templateLoop(dryRun bool, skipIF *bool) {
 							filesInvalidAdd(1)
 						}
 					}
-					logTitleln("some files changed")
 					restartServices(service)
 				}
 			}
