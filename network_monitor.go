@@ -25,12 +25,13 @@ type NetworkMonitor struct {
 // NewNetworkMonitor creates a new NetworkMonitor instance
 func NewNetworkMonitor(config NetworkMonitorConfig, logger *slog.Logger) (*NetworkMonitor, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+	defer cancel()
+
 	// Validate the configuration
 	if len(config.PriorityList) == 0 {
 		return nil, fmt.Errorf("priority list cannot be empty")
 	}
-	
+
 	if config.CheckInterval <= 0 {
 		config.CheckInterval = time.Second // Default to 1 second if not specified
 	}
@@ -42,42 +43,42 @@ func NewNetworkMonitor(config NetworkMonitorConfig, logger *slog.Logger) (*Netwo
 		cancelFunc: cancel,
 		isActive:   false,
 	}
-	
+
 	return monitor, nil
 }
 
 // Start begins the network monitoring process
 func (n *NetworkMonitor) Start() error {
 	n.logger.Info("Starting network monitor")
-	
+
 	if err := n.setupListener(); err != nil {
 		return fmt.Errorf("failed to setup listener: %w", err)
 	}
-	
+
 	n.isActive = true
-	
+
 	n.wg.Add(1)
 	go func() {
 		defer n.wg.Done()
 		n.runMonitoringLoop()
 	}()
-	
+
 	return nil
 }
 
 // Stop stops the network monitoring process
 func (n *NetworkMonitor) Stop() error {
 	n.logger.Info("Stopping network monitor")
-	
+
 	n.cancelFunc()
 	n.isActive = false
-	
+
 	if n.listener != nil {
 		n.listener.Close()
 	}
-	
+
 	n.wg.Wait()
-	
+
 	return nil
 }
 
@@ -87,9 +88,9 @@ func (n *NetworkMonitor) setupListener() error {
 	if err != nil {
 		return fmt.Errorf("failed to determine local IP: %w", err)
 	}
-	
+
 	n.logger.Info("Detected local IP address", "ip", hostIP)
-	
+
 	// Find the index of our own IP in the priority list
 	index := -1
 	for i, addr := range n.config.PriorityList {
@@ -98,28 +99,28 @@ func (n *NetworkMonitor) setupListener() error {
 		if len(parts) != 2 {
 			parts = strings.Split(addr, ":") // For IPv4 addresses or non-bracketed IPv6
 		}
-		
+
 		var ipWithoutPort string
 		if len(parts) >= 2 { // If we found : as a separator
 			ipWithoutPort = parts[0]
 		} else {
 			ipWithoutPort = addr
 		}
-		
+
 		// Remove brackets if they exist at start and end
 		ipWithoutPort = strings.Trim(ipWithoutPort, "[]")
-		
+
 		if ipWithoutPort == hostIP {
 			index = i
 			n.currentIndex = i
 			break
 		}
 	}
-	
+
 	if index == -1 {
 		return fmt.Errorf("local IP %s not found in priority list", hostIP)
 	}
-	
+
 	// Determine address to listen on
 	listenAddr := ""
 	if n.config.ListenOverride != "" {
@@ -141,17 +142,17 @@ func (n *NetworkMonitor) setupListener() error {
 			}
 		}
 	}
-	
+
 	n.logger.Info("Setting up listener", "address", listenAddr)
-	
+
 	// Create a TCP listener for health checks
 	listener, err := net.Listen("tcp", listenAddr)
 	if err != nil {
 		return fmt.Errorf("failed to create TCP listener on %s: %w", listenAddr, err)
 	}
-	
+
 	n.listener = listener
-	
+
 	// Start the listener goroutine to handle requests
 	go func() {
 		for {
@@ -169,7 +170,7 @@ func (n *NetworkMonitor) setupListener() error {
 			}
 		}
 	}()
-	
+
 	return nil
 }
 
@@ -182,12 +183,12 @@ func (n *NetworkMonitor) runMonitoringLoop() {
 		case <-n.ctx.Done():
 			n.logger.Info("Monitoring loop stopped")
 			return
-			
+
 		default:
 			if err := n.checkAndHandleFailover(); err != nil {
 				n.logger.Error("Error during failover check", "error", err)
 			}
-			
+
 			time.Sleep(n.config.CheckInterval)
 		}
 	}
@@ -199,17 +200,17 @@ func (n *NetworkMonitor) checkAndHandleFailover() error {
 	if n.currentIndex <= 0 {
 		return nil
 	}
-	
+
 	// Check priority items above us in the list
 	for i := n.currentIndex - 1; i >= 0; i-- {
 		addr := n.config.PriorityList[i]
-		
+
 		if err := n.isHostResponding(addr); err != nil {
 			n.logger.Warn("Higher priority host not responding, triggering DNS synchronization", "address", addr)
 			return n.triggerSync()
 		}
 	}
-	
+
 	return nil
 }
 
@@ -220,16 +221,16 @@ func (n *NetworkMonitor) isHostResponding(addr string) error {
 	if err != nil {
 		return fmt.Errorf("invalid address format: %s", addr)
 	}
-	
+
 	ctx, cancel := context.WithTimeout(n.ctx, time.Second*2)
 	defer cancel()
-	
+
 	dialer := &net.Dialer{}
 	c, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(conn, port))
 	if err != nil {
 		return fmt.Errorf("host %s unreachable: %w", addr, err)
 	}
-	
+
 	c.Close()
 	n.logger.Debug("Host responding at", "address", addr)
 	return nil
@@ -240,10 +241,10 @@ func (n *NetworkMonitor) triggerSync() error {
 	// In a real implementation, we would:
 	// 1. Iterate over Services that have DnsServices
 	// 2. For each DnsService, trigger their sync process
-	
-	// Placeholder - in reality this would need reference to active services 
+
+	// Placeholder - in reality this would need reference to active services
 	n.logger.Info("Triggering DNS synchronization for failover event")
-	
+
 	// This is where we'd call into DnsServiceSync logic or signal the sync processes
 	return nil
 }
@@ -255,32 +256,32 @@ func getLocalIPAddress(priorityList []string) (string, error) {
 		return "", fmt.Errorf("failed to determine local IP: %w", err)
 	}
 	defer conn.Close()
-	
+
 	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	
+
 	// Try to find the exact match or close match in priority list
 	for _, addr := range priorityList {
 		parts := strings.Split(addr, "]") // For IPv6 addresses like [2001:db8::1]:20455
 		var ipAddr string
 		if len(parts) == 2 {
-			// IPv6 with brackets 
+			// IPv6 with brackets
 			ipAddr = strings.Trim(parts[0], "[")
 		} else {
 			// Try to handle various formats
-			parts = strings.Split(addr, ":") 
+			parts = strings.Split(addr, ":")
 			if len(parts) >= 1 {
 				ipAddr = parts[0]
 			}
 		}
-		
+
 		// Handle bracketed format for IPv6 addresses if they exist
 		ipAddr = strings.Trim(ipAddr, "[]")
-		
+
 		if ipAddr == localAddr.IP.String() {
 			return ipAddr, nil
 		}
 	}
-	
+
 	// If we don't match exactly, return the local address used for connectivity test
 	return localAddr.IP.String(), nil
 }
@@ -293,7 +294,7 @@ func (n *NetworkMonitor) getPortFromAddress(addr string) string {
 		// Get last element which should be the port
 		return parts[len(parts)-1]
 	}
-	
+
 	return ""
 }
 
