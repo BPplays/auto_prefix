@@ -915,6 +915,14 @@ func replaceVars(
 					return []string{}
 				}
 
+				slog.Info(
+					fmt.Sprintf(
+						"[%v] alias ips",
+						alias,
+					),
+					"ips",
+					ips,
+				)
 				aliasIPcache[alias] = ips
 
 				ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
