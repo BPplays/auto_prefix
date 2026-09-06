@@ -775,7 +775,7 @@ func OPNsenseGetAliasIPs(name string, keyPair ApiKeyPair) ([]netip.Addr, error) 
 	)
 
 	var result OPNsenseAliasUtilResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(body, &result); err != nil {
 		return nil, err
 	}
 
