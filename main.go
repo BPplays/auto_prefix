@@ -757,6 +757,23 @@ func OPNsenseGetAliasIPs(name string, keyPair ApiKeyPair) ([]netip.Addr, error) 
 		return nil, fmt.Errorf("OPNsense returned %s", resp.Status)
 	}
 
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	slog.Info(
+		"OPNsense alias API response",
+		"status", resp.Status,
+		"body", string(body),
+	)
+
+	slog.Info(
+		"OPNsense alias API request",
+		"url", server.String(),
+		"alias", name,
+	)
+
 	var result OPNsenseAliasUtilResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
