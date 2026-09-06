@@ -916,7 +916,7 @@ func replaceVars(
 				alias string,
 				location string,
 			) ([]string) {
-				slog.Error(
+				slog.Info(
 					"ALIAS REVERSE FUNCTION CALLED",
 					"alias", alias,
 					"location", location,
@@ -965,16 +965,20 @@ func replaceVars(
 				})
 
 
-				revDNS := addrsToReverseDNS(ips)
+				revDNSes := addrsToReverseDNS(ips)
+				for i, revD := range revDNSes {
+					revDNSes[i] = fmt.Sprintf("%s.ip6.arpa.", revD)
 
-				return revDNS
+				}
+
+				return revDNSes
 			},
 
 			"alias_to_reverse_dns_ips_prefix": func(
 				alias string,
 				location string,
 			) ([]string) {
-				slog.Error(
+				slog.Info(
 					"ALIAS REVERSE FUNCTION CALLED",
 					"alias", alias,
 					"location", location,
