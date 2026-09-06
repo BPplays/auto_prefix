@@ -40,7 +40,6 @@ import (
 	"context"
 
 	"github.com/BPplays/dns_check"
-	"github.com/rs/zerolog/log"
 	"github.com/seancfoley/ipaddress-go/ipaddr"
 	"gopkg.in/yaml.v3"
 
