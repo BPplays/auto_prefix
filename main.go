@@ -937,7 +937,7 @@ func replaceVars(
 					return !isIPv6(addr)
 				})
 
-				suffixes := make([]string, len(ips))
+				suffixes := make([]string, 0, len(ips))
 
 				for _, ip := range ips {
 					mixed := mixPrefixIP(prefix, &ip)
@@ -1757,7 +1757,7 @@ func addrToReverseDNS(addr netip.Addr) string {
 }
 
 func addrsToReverseDNS(addrs []netip.Addr) []string {
-	output := make([]string, len(addrs))
+	output := make([]string, 0, len(addrs))
 
 	for _, addr := range addrs {
 		output = append(output, addrToReverseDNS(addr))
@@ -2084,7 +2084,7 @@ func generateDNSSEC(srv Service) []error {
 }
 
 func addrsToStrings(addrs []netip.Addr) []string {
-	result := make([]string, len(addrs))
+	result := make([]string, 0, len(addrs))
 	for i, addr := range addrs {
 		result[i] = addr.String()
 	}
