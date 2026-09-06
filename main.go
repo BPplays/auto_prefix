@@ -164,7 +164,7 @@ type DNSSECzone struct {
 }
 
 type ApiKeyPair struct {
-	server string `yaml:"server"`
+	Server string `yaml:"server"`
 	Key string `yaml:"key"`
 	Secret string `yaml:"secret"`
 }
@@ -712,17 +712,17 @@ func makeDnsMap(dcs *[]DnsCheckS) (*map[string]DnsCheckS) {
 }
 
 func OPNsenseGetAliasIPs(name string, keyPair ApiKeyPair) ([]netip.Addr, error) {
-	server, err := url.Parse(keyPair.server)
+	server, err := url.Parse(keyPair.Server)
 	if err != nil {
 		return nil, err
 	}
 	if server.Scheme != "http" && server.Scheme != "https" {
-		slog.Info(fmt.Sprintf("keyPair.server=%v", keyPair.server))
+		slog.Info(fmt.Sprintf("keyPair.server=%v", keyPair.Server))
 		return nil, fmt.Errorf("invalid server URL scheme: %q", server.Scheme)
 	}
 
 	if server.Host == "" {
-		slog.Info(fmt.Sprintf("keyPair.server=%v", keyPair.server))
+		slog.Info(fmt.Sprintf("keyPair.server=%v", keyPair.Server))
 		return nil, fmt.Errorf("server URL has no host")
 	}
 
