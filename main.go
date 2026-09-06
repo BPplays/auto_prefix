@@ -718,12 +718,12 @@ func OPNsenseGetAliasIPs(name string, keyPair ApiKeyPair) ([]netip.Addr, error) 
 		return nil, err
 	}
 	if server.Scheme != "http" && server.Scheme != "https" {
-		log.Info(fmt.Sprintf("keyPair.server=%v", keyPair.server))
+		slog.Info(fmt.Sprintf("keyPair.server=%v", keyPair.server))
 		return nil, fmt.Errorf("invalid server URL scheme: %q", server.Scheme)
 	}
 
 	if server.Host == "" {
-		log.Info(fmt.Sprintf("keyPair.server=%v", keyPair.server))
+		slog.Info(fmt.Sprintf("keyPair.server=%v", keyPair.server))
 		return nil, fmt.Errorf("server URL has no host")
 	}
 
