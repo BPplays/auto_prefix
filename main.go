@@ -899,6 +899,14 @@ func replaceVars(
 				location string,
 			) ([]string) {
 				if ips, exists := aliasIPcache[alias]; exists {
+					slog.Info(
+						fmt.Sprintf(
+							"[%v] alias ips (cached)",
+							alias,
+						),
+						"ips",
+						ips,
+					)
 					ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
 						return !isIPv6(addr)
 					})
