@@ -885,7 +885,10 @@ func replaceVars(
 				return ips
 			},
 
-			"alias_to_reverse_dns_ips": func(alias string, location string) ([]string) {
+			"alias_to_reverse_dns_ips_prefix": func(
+				alias string,
+				location string,
+			) ([]string) {
 				if ips, exists := aliasIPcache[alias]; exists {
 					ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
 						return !isIPv6(addr)
@@ -909,9 +912,19 @@ func replaceVars(
 					return !isIPv6(addr)
 				})
 
-				revIPs := addrsToReverseDNS(ips)
+				suffixes := make([]string, len(ips))
 
-				return revIPs
+				for _, ip := range ips {
+					mixed := mixPrefixIP(prefix, &ip)
+					_, suffix, err := IPv6PrefixToReverseDnsPrefixSuffix(*mixed)
+					if err != nil {
+						continue
+					}
+					suffixes = append(suffixes, suffix)
+
+				}
+
+				return suffixes
 			},
 
 			"get_reverse_dns_ip": func(ipStr string) (string) {
