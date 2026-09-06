@@ -912,6 +912,64 @@ func replaceVars(
 				return ips
 			},
 
+			"alias_to_reverse_dns_ips": func(
+				alias string,
+				location string,
+			) ([]string) {
+				slog.Error(
+					"ALIAS REVERSE FUNCTION CALLED",
+					"alias", alias,
+					"location", location,
+				)
+
+				var ips []netip.Addr
+
+
+				var err error
+				var exists bool
+				if ips, exists = aliasIPcache[alias]; exists {
+					slog.Info(
+						fmt.Sprintf(
+							"[%v] alias ips (cached)",
+							alias,
+						),
+						"ips",
+						ips,
+					)
+				} else {
+
+					ips, err = GetAliasIps(
+						alias,
+						location,
+						service.AliasSources,
+					)
+					if err != nil {
+						slog.Error(fmt.Sprintf("error: %v", err))
+						return []string{}
+					}
+
+					slog.Info(
+						fmt.Sprintf(
+							"[%v] alias ips",
+							alias,
+						),
+						"ips",
+						ips,
+					)
+					aliasIPcache[alias] = ips
+
+
+				}
+				ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
+					return !isIPv6(addr)
+				})
+
+
+				revDNS := addrsToReverseDNS(ips)
+
+				return revDNS
+			},
+
 			"alias_to_reverse_dns_ips_prefix": func(
 				alias string,
 				location string,
