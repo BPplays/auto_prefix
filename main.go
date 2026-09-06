@@ -40,6 +40,7 @@ import (
 	"context"
 
 	"github.com/BPplays/dns_check"
+	"github.com/rs/zerolog/log"
 	"github.com/seancfoley/ipaddress-go/ipaddr"
 	"gopkg.in/yaml.v3"
 
@@ -716,6 +717,15 @@ func OPNsenseGetAliasIPs(name string, keyPair ApiKeyPair) ([]netip.Addr, error) 
 	if err != nil {
 		return nil, err
 	}
+	if server.Scheme != "http" && server.Scheme != "https" {
+		log.Info(fmt.Sprintf("keyPair.server=%v", keyPair.server))
+		return nil, fmt.Errorf("invalid server URL scheme: %q", server.Scheme)
+	}
+
+	if server.Host == "" {
+		log.Info(fmt.Sprintf("keyPair.server=%v", keyPair.server))
+		return nil, fmt.Errorf("server URL has no host")
+	}
 
 
 	server = server.JoinPath(
@@ -723,7 +733,7 @@ func OPNsenseGetAliasIPs(name string, keyPair ApiKeyPair) ([]netip.Addr, error) 
 		"firewall",
 		"alias_util",
 		"list",
-		url.PathEscape(name),
+		name,
 	)
 
 	req, err := http.NewRequest(
