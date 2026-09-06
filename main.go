@@ -965,13 +965,7 @@ func replaceVars(
 				})
 
 
-				revDNSes := addrsToReverseDNS(ips)
-				for i, revD := range revDNSes {
-					revDNSes[i] = fmt.Sprintf("%s.ip6.arpa.", revD)
-
-				}
-
-				return revDNSes
+				return addrsToReverseDNS(ips)
 			},
 
 			"alias_to_reverse_dns_ips_prefix": func(
