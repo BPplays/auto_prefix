@@ -66,6 +66,7 @@ var (
 
 const (
 	progName = "auto_prefix"
+	verString = "v1.1.0"
 	Prefix_length_default = 56
 	prefix_full_subnet_len = 64
 	checkInterval  = 5 * time.Second
@@ -898,6 +899,12 @@ func replaceVars(
 				alias string,
 				location string,
 			) ([]string) {
+				slog.Error(
+					"ALIAS REVERSE FUNCTION CALLED",
+					"alias", alias,
+					"location", location,
+				)
+
 				var ips []netip.Addr
 
 
@@ -2263,7 +2270,7 @@ func run(dryRun bool) {
 	}
 
 
-	slog.Info("starting program")
+	slog.Info(fmt.Sprintf("starting program %s", verString))
 	// log.Println("starting program")
 	// log.Println("using if:", interfaceName)
 
