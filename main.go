@@ -898,7 +898,12 @@ func replaceVars(
 				alias string,
 				location string,
 			) ([]string) {
-				if ips, exists := aliasIPcache[alias]; exists {
+				var ips []netip.Addr
+
+
+				var err error
+				var exists bool
+				if ips, exists = aliasIPcache[alias]; exists {
 					slog.Info(
 						fmt.Sprintf(
 							"[%v] alias ips (cached)",
@@ -907,35 +912,34 @@ func replaceVars(
 						"ips",
 						ips,
 					)
-					ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
-						return !isIPv6(addr)
-					})
-					return addrsToStrings(ips)
-				}
+				} else {
 
-				ips, err := GetAliasIps(
-					alias,
-					location,
-					service.AliasSources,
-				)
-				if err != nil {
-					slog.Error(fmt.Sprintf("error: %v", err))
-					return []string{}
-				}
-
-				slog.Info(
-					fmt.Sprintf(
-						"[%v] alias ips",
+					ips, err = GetAliasIps(
 						alias,
-					),
-					"ips",
-					ips,
-				)
-				aliasIPcache[alias] = ips
+						location,
+						service.AliasSources,
+					)
+					if err != nil {
+						slog.Error(fmt.Sprintf("error: %v", err))
+						return []string{}
+					}
 
+					slog.Info(
+						fmt.Sprintf(
+							"[%v] alias ips",
+							alias,
+						),
+						"ips",
+						ips,
+					)
+					aliasIPcache[alias] = ips
+
+
+				}
 				ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
 					return !isIPv6(addr)
 				})
+
 
 				suffixes := make([]string, 0, len(ips))
 
