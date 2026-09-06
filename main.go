@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
@@ -135,6 +136,15 @@ func dnsCheckStoSliceOfFwdGroup(dcs *[]DnsCheckS) (out []dns_check.ForwarderGrou
 	return out
 }
 
+type OPNsenseAliasUtilResponse struct {
+	Total    int `json:"total"`
+	RowCount int `json:"rowCount"`
+	Current  int `json:"current"`
+	Rows     []struct {
+		IP netip.Addr `json:"ip"`
+	} `json:"rows"`
+}
+
 type DnsCheckS struct {
 	VarName                 string        `yaml:"var_name"`
 	Resolvers               dns_check.ForwarderGroup          `yaml:"resolvers"`
@@ -151,6 +161,18 @@ type DNSSECzone struct {
 	File string `yaml:"file"`
 	Domain string `yaml:"domain"`
 	KeyPair DNSSECkeypairFile `yaml:"key_pair_files"`
+}
+
+type ApiKeyPair struct {
+	server string `yaml:"server"`
+	Key string `yaml:"key"`
+	Secret string `yaml:"secret"`
+}
+
+type AliasSource struct {
+	Type string `yaml:"type"`
+	Location string `yaml:"location"`
+	API ApiKeyPair `yaml:"api"`
 }
 
 type Config struct {
@@ -187,6 +209,9 @@ type Service struct {
 	Vars      map[string]any           `yaml:"vars"`
 	DnsServices      []DnsService      `yaml:"dns_services"`
 	DNSSECzones      []DNSSECzone      `yaml:"dnssec_zones"`
+
+
+	AliasSources      []AliasSource      `yaml:"alias_sources"`
 }
 
 func (m *FileMapping) StringForMap() string {
@@ -686,6 +711,76 @@ func makeDnsMap(dcs *[]DnsCheckS) (*map[string]DnsCheckS) {
 	return &out
 }
 
+func OPNsenseGetAliasIPs(name string, keyPair ApiKeyPair) ([]netip.Addr, error) {
+	server, err := url.Parse(keyPair.server)
+	if err != nil {
+		return nil, err
+	}
+
+
+	server = server.JoinPath(
+		"api",
+		"firewall",
+		"alias_util",
+		"list",
+		url.PathEscape(name),
+	)
+
+	req, err := http.NewRequest(
+		http.MethodGet,
+		server.String(),
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	req.SetBasicAuth(keyPair.Key, keyPair.Secret)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OPNsense returned %s", resp.Status)
+	}
+
+	var result OPNsenseAliasUtilResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	ips := make([]netip.Addr, 0, len(result.Rows))
+	for _, row := range result.Rows {
+		ips = append(ips, row.IP)
+	}
+
+	return ips, nil
+}
+
+func GetAliasIps(
+	alias string,
+	location string,
+	sources []AliasSource,
+) ([]netip.Addr, error) {
+	for _, src := range sources {
+		if (location != "") && (location != src.Location) {
+			continue
+		}
+
+		switch strings.ToLower(src.Type) {
+		case "opnsense":
+			return OPNsenseGetAliasIPs(alias, src.API)
+		default:
+			return nil, errors.ErrUnsupported
+		}
+	}
+
+	return nil, errors.New("empty sources, or none with correct location found")
+}
+
 func replaceVars(
 	content *[]byte,
 	prefix *netip.Prefix,
@@ -716,6 +811,8 @@ func replaceVars(
 
 	getIPv6SubnetCache := make(map[string]string)
 	mixPrefixIPCache := make(map[string]string)
+	aliasIPcache := make(map[string][]netip.Addr)
+
 	vars := map[string]any{
 		"ut_10":  ut,
 		"ipv6_prefix":   ipstr,
@@ -766,6 +863,55 @@ func replaceVars(
 				mixPrefixIPCache[ipStr] = mixedStr
 
 				return mixedStr
+			},
+
+			"alias_to_ips": func(alias string, location string) ([]netip.Addr) {
+				if ips, exists := aliasIPcache[alias]; exists {
+					return ips
+				}
+
+				ips, err := GetAliasIps(
+					alias,
+					location,
+					service.AliasSources,
+				)
+				if err != nil {
+					slog.Error(fmt.Sprintf("error: %v", err))
+					return []netip.Addr{}
+				}
+
+				aliasIPcache[alias] = ips
+
+				return ips
+			},
+
+			"alias_to_reverse_dns_ips": func(alias string, location string) ([]string) {
+				if ips, exists := aliasIPcache[alias]; exists {
+					ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
+						return !isIPv6(addr)
+					})
+					return addrsToStrings(ips)
+				}
+
+				ips, err := GetAliasIps(
+					alias,
+					location,
+					service.AliasSources,
+				)
+				if err != nil {
+					slog.Error(fmt.Sprintf("error: %v", err))
+					return []string{}
+				}
+
+				aliasIPcache[alias] = ips
+
+				ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
+					return !isIPv6(addr)
+				})
+
+				revIPs := addrsToReverseDNS(ips)
+
+				return revIPs
 			},
 
 			"get_reverse_dns_ip": func(ipStr string) (string) {
@@ -1555,10 +1701,11 @@ func updateStoredIPv6Prefix(newPrefix netip.Prefix, cfg Config) error {
 	return nil
 }
 
+func isIPv6(addr netip.Addr) (bool) {
+	return addr.Is6() && (!addr.Is4In6())
+}
 
-
-func IPv6PrefixToReverseDNS(addr netip.Addr) string {
-
+func addrToReverseDNS(addr netip.Addr) string {
 	exp := ipaddr.NewIPAddressFromNetNetIPAddr(addr)
 
 	revdns, err := exp.GetSection().ToReverseDNSString()
@@ -1571,16 +1718,31 @@ func IPv6PrefixToReverseDNS(addr netip.Addr) string {
 	return revdns
 }
 
+func addrsToReverseDNS(addrs []netip.Addr) []string {
+	output := make([]string, len(addrs))
+
+	for _, addr := range addrs {
+		output = append(output, addrToReverseDNS(addr))
+	}
+
+	return output
+}
+
 
 func IPv6PrefixToReverseDnsPrefixSuffix(p netip.Prefix) (
 	prefix, suffix string,
 	err error,
 ) {
-	const totalNibbles = 128 / 4
+	if !isIPv6(p.Addr()) {
+		return "", "", errors.ErrUnsupported
+	}
+
+
+	const totalNibbles int = 128 / 4
 
 	prefLen := p.Bits()
 
-	revdns := IPv6PrefixToReverseDNS(p.Addr())
+	revdns := addrToReverseDNS(p.Addr())
 
 	numNibbles := prefLen / 4
 
@@ -1881,6 +2043,14 @@ func generateDNSSEC(srv Service) []error {
 
 	}
 	return errs
+}
+
+func addrsToStrings(addrs []netip.Addr) []string {
+	result := make([]string, len(addrs))
+	for i, addr := range addrs {
+		result[i] = addr.String()
+	}
+	return result
 }
 
 
