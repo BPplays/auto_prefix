@@ -838,7 +838,7 @@ func replaceVars(
 
 	getIPv6SubnetCache := make(map[string]string)
 	mixPrefixIPCache := make(map[string]string)
-	aliasIPcache := make(map[string][]netip.Addr)
+	aliasIPcache := make(map[string]map[string][]netip.Addr)
 
 	vars := map[string]any{
 		"ut_10":  ut,
@@ -855,6 +855,34 @@ func replaceVars(
 	dnsMap := *makeDnsMap(&cacheDnsFound)
 	vars["hosts"] = hostsMap
 	vars["resolvers"] = dnsMap
+
+	resolveAliasIPs := func(alias, location string) ([]netip.Addr) {
+		if _, exists := aliasIPcache[location]; !exists {
+			aliasIPcache[location] = make(map[string][]netip.Addr)
+		}
+
+		if ips, exists := aliasIPcache[location][alias]; exists {
+			return ips
+		}
+
+		ips, err := GetAliasIps(
+			alias,
+			location,
+			service.AliasSources,
+		)
+		if err != nil {
+			slog.Error(
+				"failed to get alias IPs",
+				"alias", alias,
+				"location", location,
+				"error", err,
+			)
+			return []netip.Addr{}
+		}
+
+		aliasIPcache[location][alias] = ips
+		return ips
+	}
 
 	tpl := template.New("zonefile.tmpl").
 		Funcs(template.FuncMap{
@@ -892,78 +920,16 @@ func replaceVars(
 				return mixedStr
 			},
 
-			"alias_to_ips": func(alias string, location string) ([]netip.Addr) {
-				if ips, exists := aliasIPcache[alias]; exists {
-					return ips
-				}
-
-				ips, err := GetAliasIps(
-					alias,
-					location,
-					service.AliasSources,
-				)
-				if err != nil {
-					slog.Error(fmt.Sprintf("error: %v", err))
-					return []netip.Addr{}
-				}
-
-				aliasIPcache[alias] = ips
-
-				return ips
+			"alias_to_ips": func(alias, location string) []netip.Addr {
+				return resolveAliasIPs(alias, location)
 			},
 
-			"alias_to_reverse_dns_ips": func(
-				alias string,
-				location string,
-			) ([]string) {
-				slog.Info(
-					"ALIAS REVERSE FUNCTION CALLED",
-					"alias", alias,
-					"location", location,
-				)
+			"alias_to_reverse_dns_ips": func(alias, location string) []string {
+				ips := resolveAliasIPs(alias, location)
 
-				var ips []netip.Addr
-
-
-				var err error
-				var exists bool
-				if ips, exists = aliasIPcache[alias]; exists {
-					slog.Info(
-						fmt.Sprintf(
-							"[%v] alias ips (cached)",
-							alias,
-						),
-						"ips",
-						ips,
-					)
-				} else {
-
-					ips, err = GetAliasIps(
-						alias,
-						location,
-						service.AliasSources,
-					)
-					if err != nil {
-						slog.Error(fmt.Sprintf("error: %v", err))
-						return []string{}
-					}
-
-					slog.Info(
-						fmt.Sprintf(
-							"[%v] alias ips",
-							alias,
-						),
-						"ips",
-						ips,
-					)
-					aliasIPcache[alias] = ips
-
-
-				}
 				ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
-					return !isIPv6(addr)
+					return !isIPv6Valid(addr)
 				})
-
 
 				return addrsToReverseDNS(ips)
 			},
@@ -972,54 +938,11 @@ func replaceVars(
 				alias string,
 				location string,
 			) ([]string) {
-				slog.Info(
-					"ALIAS REVERSE FUNCTION CALLED",
-					"alias", alias,
-					"location", location,
-				)
+				ips := resolveAliasIPs(alias, location)
 
-				var ips []netip.Addr
-
-
-				var err error
-				var exists bool
-				if ips, exists = aliasIPcache[alias]; exists {
-					slog.Info(
-						fmt.Sprintf(
-							"[%v] alias ips (cached)",
-							alias,
-						),
-						"ips",
-						ips,
-					)
-				} else {
-
-					ips, err = GetAliasIps(
-						alias,
-						location,
-						service.AliasSources,
-					)
-					if err != nil {
-						slog.Error(fmt.Sprintf("error: %v", err))
-						return []string{}
-					}
-
-					slog.Info(
-						fmt.Sprintf(
-							"[%v] alias ips",
-							alias,
-						),
-						"ips",
-						ips,
-					)
-					aliasIPcache[alias] = ips
-
-
-				}
 				ips = slices.DeleteFunc(ips, func(addr netip.Addr) bool {
-					return !isIPv6(addr)
+					return !isIPv6Valid(addr)
 				})
-
 
 				suffixes := make([]string, 0, len(ips))
 
@@ -1077,6 +1000,32 @@ func replaceVars(
 				}
 
 				return suffix
+			},
+
+
+			"get_reverse_dns_prefix": func(ipStr string, bits int) (string) {
+
+				ip, err := looseParseSuffix(ipStr)
+				if err != nil {
+					ip = netip.MustParseAddr(ipv6MaxAddr)
+				}
+
+				prefULA, _, err := IPv6PrefixToReverseDnsPrefixSuffix(
+					netip.PrefixFrom(
+						ip,
+						bits,
+					),
+				)
+				if err != nil {
+					prefULA, _, _ = IPv6PrefixToReverseDnsPrefixSuffix(
+						netip.PrefixFrom(
+							netip.MustParseAddr("2001:db8::"),
+							bits,
+						),
+					)
+				}
+
+				return prefULA
 			},
 
 			"get_reverse_dns_prefix_size_ula": func(ipStr string) (string) {
@@ -1827,6 +1776,21 @@ func isIPv6(addr netip.Addr) (bool) {
 	return addr.Is6() && (!addr.Is4In6())
 }
 
+func isIPv6Valid(addr netip.Addr) (bool) {
+	if !addr.IsValid() {
+		return false
+	}
+
+	if addr.IsUnspecified() {
+		return false
+	}
+
+	if !isIPv6(addr) {
+		return false
+	}
+	return true
+}
+
 func addrToReverseDNS(addr netip.Addr) string {
 	exp := ipaddr.NewIPAddressFromNetNetIPAddr(addr)
 
@@ -1855,7 +1819,7 @@ func IPv6PrefixToReverseDnsPrefixSuffix(p netip.Prefix) (
 	prefix, suffix string,
 	err error,
 ) {
-	if !isIPv6(p.Addr()) {
+	if !isIPv6Valid(p.Addr()) {
 		return "", "", errors.ErrUnsupported
 	}
 
